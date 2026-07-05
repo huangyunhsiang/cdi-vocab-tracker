@@ -1,0 +1,19 @@
+rules_version = '2';
+
+// Firestore 安全規則：僅允許白名單 email 讀寫自家 familyId 底下的資料。
+// 部署方式見 docs/FIREBASE-SETUP.md。
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isFamilyMember() {
+      return request.auth != null && request.auth.token.email in [
+        'smalltain@gmail.com',
+        'WIFE_EMAIL_HERE'
+      ];
+    }
+
+    match /families/{familyId}/{document=**} {
+      allow read, write: if isFamilyMember();
+    }
+  }
+}

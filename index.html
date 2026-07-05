@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>寶寶詞彙追蹤 CDI Vocab Tracker</title>
+<meta name="description" content="嬰幼兒詞彙與手勢發展追蹤工具（CDI 公開類別架構）">
+<meta name="theme-color" content="#faf7f2">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <h1>寶寶詞彙追蹤</h1>
+  <div class="subtitle">CDI Vocab Tracker　<span id="sync-status">本機儲存</span></div>
+</header>
+
+<main>
+
+  <!-- 記錄頁 -->
+  <section id="tab-record" class="tab-panel active" aria-labelledby="nav-record">
+    <div class="card">
+      <h2>快速新增詞彙</h2>
+      <label for="input-word">詞彙</label>
+      <input type="text" id="input-word" placeholder="例如：媽媽">
+
+      <label for="input-category">類別</label>
+      <select id="input-category"></select>
+
+      <div class="checkbox-row">
+        <input type="checkbox" id="check-understands">
+        <label for="check-understands">聽得懂</label>
+        <input type="date" id="date-understands" disabled>
+      </div>
+
+      <div class="checkbox-row">
+        <input type="checkbox" id="check-says">
+        <label for="check-says">會說</label>
+        <input type="date" id="date-says" disabled>
+      </div>
+
+      <label for="input-recorder">記錄者</label>
+      <select id="input-recorder">
+        <option value="爸爸">爸爸</option>
+        <option value="媽媽">媽媽</option>
+      </select>
+
+      <label for="input-note">情境備註（選填）</label>
+      <input type="text" id="input-note" placeholder="例如：看到狗狗時說的">
+
+      <button class="full-width" id="btn-add-word">新增詞彙</button>
+    </div>
+
+    <div class="card">
+      <h2>手勢記錄</h2>
+      <label for="input-gesture">手勢類型</label>
+      <select id="input-gesture"></select>
+
+      <label for="input-gesture-date">日期</label>
+      <input type="date" id="input-gesture-date">
+
+      <label for="input-gesture-recorder">記錄者</label>
+      <select id="input-gesture-recorder">
+        <option value="爸爸">爸爸</option>
+        <option value="媽媽">媽媽</option>
+      </select>
+
+      <button class="full-width" id="btn-add-gesture">新增手勢記錄</button>
+    </div>
+
+    <div class="card">
+      <h2>詞彙清單</h2>
+      <label for="input-search">搜尋</label>
+      <input type="text" id="input-search" placeholder="輸入詞彙搜尋…">
+      <ul class="word-list" id="word-list"></ul>
+    </div>
+  </section>
+
+  <!-- 曲線頁 -->
+  <section id="tab-curve" class="tab-panel" aria-labelledby="nav-curve">
+    <div class="card" id="milestone-banner-wrap"></div>
+
+    <div class="card">
+      <h2>累積詞彙曲線</h2>
+      <div class="chart-wrap"><canvas id="chart-cumulative"></canvas></div>
+    </div>
+
+    <div class="card">
+      <h2>週增量</h2>
+      <div class="chart-wrap"><canvas id="chart-weekly"></canvas></div>
+    </div>
+  </section>
+
+  <!-- 分析頁 -->
+  <section id="tab-analysis" class="tab-panel" aria-labelledby="nav-analysis">
+    <div class="card">
+      <h2>類別分佈</h2>
+      <div class="chart-wrap"><canvas id="chart-category"></canvas></div>
+    </div>
+
+    <div class="card">
+      <h2>理解與表達差距</h2>
+      <div id="gap-summary"></div>
+    </div>
+  </section>
+
+  <!-- 題本頁 -->
+  <section id="tab-wordlist" class="tab-panel" aria-labelledby="nav-wordlist">
+    <div class="copyright-note">
+      正式量表題本有版權，本工具不內建任何題本詞項。若你持有正式授權，可在此載入自備的題本檔案（僅存本機／自家
+      Firebase，不會上傳到本專案的程式碼倉庫）。
+    </div>
+
+    <div class="card">
+      <h2>載入題本</h2>
+      <label for="input-wordlist-file">選擇檔案（JSON 或 CSV，格式：word,category）</label>
+      <input type="file" id="input-wordlist-file" accept=".json,.csv">
+      <div id="wordlist-status"></div>
+    </div>
+
+    <div class="card">
+      <h2>已載入清單</h2>
+      <ul class="word-list" id="wordlist-preview"></ul>
+    </div>
+  </section>
+
+  <!-- 設定頁 -->
+  <section id="tab-settings" class="tab-panel" aria-labelledby="nav-settings">
+    <div class="card">
+      <h2>資料匯出</h2>
+      <button class="full-width secondary" id="btn-export-csv">匯出研究級 CSV</button>
+      <button class="full-width secondary" id="btn-export-json">匯出 JSON 備份</button>
+    </div>
+
+    <div class="card">
+      <h2>資料匯入</h2>
+      <label for="input-import-json">選擇 JSON 備份檔</label>
+      <input type="file" id="input-import-json" accept=".json">
+    </div>
+
+    <div class="card">
+      <h2>雲端同步</h2>
+      <p>目前後端：<strong id="settings-backend-name">本機儲存（localStorage）</strong></p>
+      <p>如需在爸爸、媽媽兩台裝置間同步，請參考 <code>docs/FIREBASE-SETUP.md</code> 設定 Firebase。</p>
+    </div>
+
+    <div class="card">
+      <h2>清除資料</h2>
+      <button class="full-width danger" id="btn-clear-all">清除所有本機資料</button>
+    </div>
+  </section>
+
+</main>
+
+<nav class="tab-bar">
+  <button id="nav-record" class="active" data-tab="tab-record"><span class="tab-icon">📝</span>記錄</button>
+  <button id="nav-curve" data-tab="tab-curve"><span class="tab-icon">📈</span>曲線</button>
+  <button id="nav-analysis" data-tab="tab-analysis"><span class="tab-icon">📊</span>分析</button>
+  <button id="nav-wordlist" data-tab="tab-wordlist"><span class="tab-icon">📖</span>題本</button>
+  <button id="nav-settings" data-tab="tab-settings"><span class="tab-icon">⚙️</span>設定</button>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<!-- firebase-config.js 為選用檔（見 js/firebase-config.sample.js），不存在時忽略載入錯誤，改用 localStorage -->
+<script src="js/firebase-config.js" onerror="console.info('未設定 firebase-config.js，使用本機儲存')"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js" onerror="console.info('Firebase SDK 未載入，使用本機儲存')"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js" onerror="console.info('Firebase SDK 未載入，使用本機儲存')"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js" onerror="console.info('Firebase SDK 未載入，使用本機儲存')"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
