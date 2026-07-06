@@ -37,6 +37,7 @@ async function main() {
   setupRecordForm();
   setupWordlistTab();
   setupSettingsTab();
+  setupCloudSyncUI();
 
   await refreshAll();
 }
@@ -451,6 +452,141 @@ function setupSettingsTab() {
   document.getElementById('btn-export-json').addEventListener('click', onExportJson);
   document.getElementById('input-import-json').addEventListener('change', onImportJson);
   document.getElementById('btn-clear-all').addEventListener('click', onClearAll);
+}
+
+// ---------------------------------------------------------------------------
+// 雲端同步（Google 登入）
+// ---------------------------------------------------------------------------
+
+let deniedAutoSignedOut = false;
+
+function setupCloudSyncUI() {
+  const noConfigEl = document.getElementById('sync-no-config');
+  const signedOutEl = document.getElementById('sync-signed-out');
+  const signedInEl = document.getElementById('sync-signed-in');
+  const deniedEl = document.getElementById('sync-denied');
+  const emailEl = document.getElementById('sync-user-email');
+  const signInBtn = document.getElementById('btn-google-signin');
+  const signOutBtn = document.getElementById('btn-google-signout');
+
+  function showOnly(el) {
+    [noConfigEl, signedOutEl, signedInEl, deniedEl].forEach((e) => {
+      e.style.display = e === el ? '' : 'none';
+    });
+  }
+
+  function renderAuthState(user) {
+    if (!store.hasFirebaseConfig()) {
+      showOnly(noConfigEl);
+      return;
+    }
+    if (user) {
+      emailEl.textContent = user.email || '(未知帳號)';
+      showOnly(signedInEl);
+    } else {
+      showOnly(signedOutEl);
+    }
+  }
+
+  renderAuthState(store.getCurrentUser());
+
+  if (!store.hasFirebaseConfig()) {
+    return;
+  }
+
+  signInBtn.addEventListener('click', async () => {
+    try {
+      await store.signInWithGoogle();
+    } catch (e) {
+      console.error('Google 登入失敗', e);
+      showToast('登入失敗，請稍後再試');
+    }
+  });
+
+  signOutBtn.addEventListener('click', async () => {
+    await store.signOutUser();
+  });
+
+  store.onAuthChange(async (user) => {
+    if (!user) {
+      renderAuthState(null);
+      await store.reinitBackend();
+      updateBackendDisplay();
+      await refreshAll();
+      return;
+    }
+
+    try {
+      const localHadData = await checkLocalHasData();
+      await store.reinitBackend();
+      updateBackendDisplay();
+      renderAuthState(user);
+
+      if (localHadData) {
+        await migrateLocalDataToCloudIfEmpty();
+      }
+
+      await refreshAll();
+    } catch (e) {
+      if (isPermissionDenied(e)) {
+        showOnly(deniedEl);
+        if (!deniedAutoSignedOut) {
+          deniedAutoSignedOut = true;
+          await store.signOutUser();
+        }
+        return;
+      }
+      console.error('登入後初始化雲端資料失敗', e);
+      showToast('雲端資料載入失敗');
+    }
+  });
+}
+
+function isPermissionDenied(e) {
+  return !!e && (e.code === 'permission-denied' || /permission-denied/i.test(e.message || ''));
+}
+
+// 登入前先讀一次「切換雲端後端之前」的本機資料快照，用來判斷是否需要遷移。
+async function checkLocalHasData() {
+  try {
+    const raw = {
+      words: JSON.parse(localStorage.getItem('cdi_words') || '[]'),
+      gestures: JSON.parse(localStorage.getItem('cdi_gestures') || '[]'),
+      wordlist: JSON.parse(localStorage.getItem('cdi_wordlist') || '[]'),
+    };
+    return raw.words.length > 0 || raw.gestures.length > 0 || raw.wordlist.length > 0;
+  } catch (e) {
+    return false;
+  }
+}
+
+// 首次登入資料遷移：本機有資料、雲端對應集合為空 → 整批寫上雲端。
+// 雲端已有資料則視為以雲端為準，本機資料保留不動，不合併、不覆蓋。
+async function migrateLocalDataToCloudIfEmpty() {
+  const localWords = JSON.parse(localStorage.getItem('cdi_words') || '[]');
+  const localGestures = JSON.parse(localStorage.getItem('cdi_gestures') || '[]');
+  const localWordlist = JSON.parse(localStorage.getItem('cdi_wordlist') || '[]');
+
+  const cloudWords = await store.listWords();
+  const cloudGestures = await store.listGestures();
+  const cloudWordlist = await store.listWordlistEntries();
+
+  const cloudIsEmpty = cloudWords.length === 0 && cloudGestures.length === 0 && cloudWordlist.length === 0;
+  const localHasData = localWords.length > 0 || localGestures.length > 0 || localWordlist.length > 0;
+
+  if (!cloudIsEmpty || !localHasData) {
+    return;
+  }
+
+  if (localWords.length > 0 || localGestures.length > 0) {
+    await store.importAll({ words: localWords, gestures: localGestures });
+  }
+  if (localWordlist.length > 0) {
+    await store.saveWordlistEntries(localWordlist);
+  }
+
+  const migratedCount = localWords.length + localGestures.length + localWordlist.length;
+  showToast(`已將本機 ${migratedCount} 筆記錄遷移至雲端`);
 }
 
 function downloadFile(filename, content, mime) {

@@ -141,10 +141,27 @@
       <input type="file" id="input-import-json" accept=".json">
     </div>
 
-    <div class="card">
+    <div class="card" id="card-cloud-sync">
       <h2>雲端同步</h2>
       <p>目前後端：<strong id="settings-backend-name">本機儲存（localStorage）</strong></p>
-      <p>如需在爸爸、媽媽兩台裝置間同步，請參考 <code>docs/FIREBASE-SETUP.md</code> 設定 Firebase。</p>
+
+      <div id="sync-no-config">
+        <p>未設定 Firebase（見 <code>docs/FIREBASE-SETUP.md</code>）。</p>
+      </div>
+
+      <div id="sync-signed-out" style="display:none;">
+        <p>登入後與家人共用同一份記錄。</p>
+        <button class="full-width" id="btn-google-signin">使用 Google 登入</button>
+      </div>
+
+      <div id="sync-signed-in" style="display:none;">
+        <p>已登入：<strong id="sync-user-email"></strong></p>
+        <button class="full-width secondary" id="btn-google-signout">登出</button>
+      </div>
+
+      <div id="sync-denied" style="display:none;">
+        <p class="sync-denied-msg">此帳號不在白名單，請聯絡管理者。</p>
+      </div>
     </div>
 
     <div class="card">

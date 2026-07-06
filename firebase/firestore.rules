@@ -8,7 +8,7 @@ service cloud.firestore {
     function isFamilyMember() {
       return request.auth != null && request.auth.token.email in [
         'smalltain@gmail.com',
-        'WIFE_EMAIL_HERE'
+        'bear2031@gmail.com'
       ];
     }
 

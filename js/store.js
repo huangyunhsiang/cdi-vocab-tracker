@@ -3,8 +3,9 @@
  *
  * 兩種後端對上層 API 完全一致：
  *   - 預設：localStorage（key 前綴 cdi_）
- *   - 若全域存在 FIREBASE_CONFIG（由 js/firebase-config.js 提供，該檔已 gitignore）：
- *     改走 Firestore（compat SDK CDN），啟用離線持久化快取。
+ *   - 若全域存在 FIREBASE_CONFIG（由 js/firebase-config.js 提供，該檔已 gitignore）
+ *     **且**使用者已透過 Google 登入 → 改走 Firestore（compat SDK CDN），啟用離線持久化快取。
+ *     只有 config 存在、尚未登入時，仍走 localStorage（見 selectBackend）。
  *
  * 集合結構（Firestore）：
  *   families/{familyId}/words/{wordId}
@@ -24,6 +25,15 @@
  *   clearAll(): Promise<void>
  *   listWordlistEntries(): Promise<WordlistEntry[]>
  *   saveWordlistEntries(entries): Promise<void>
+ *
+ * Auth API（僅在有 FIREBASE_CONFIG 時有意義；無 config 時皆為 no-op／回傳 null）：
+ *   hasFirebaseConfig(): boolean
+ *   waitForFirstAuthState(): Promise<firebase.User|null>　— App 啟動時等一次，避免閃爍換源
+ *   getCurrentUser(): firebase.User|null
+ *   onAuthChange(cb): () => void　— 訂閱後續登入狀態變化，回傳取消訂閱函式
+ *   signInWithGoogle(): Promise<void>　— 依裝置類型走 popup 或 redirect
+ *   signOutUser(): Promise<void>
+ *   reinitBackend(): Promise<void>　— 登入/登出後重新選擇並初始化後端
  */
 
 const LS_PREFIX = 'cdi_';
@@ -239,21 +249,123 @@ function createFirestoreBackend(firebaseConfig) {
 }
 
 // ---------------------------------------------------------------------------
+// Auth（Google 登入；僅在 FIREBASE_CONFIG 存在時生效）
+// ---------------------------------------------------------------------------
+
+let authInited = false;
+let firstAuthStatePromise = null;
+
+function isMobileDevice() {
+  if (typeof navigator === 'undefined') return false;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+}
+
+function ensureAuthApp() {
+  if (typeof firebase === 'undefined') {
+    throw new Error('Firebase compat SDK 尚未載入，請確認 index.html 有引入 firebase-auth-compat CDN script');
+  }
+  if (!firebase.apps || firebase.apps.length === 0) {
+    firebase.initializeApp(window.FIREBASE_CONFIG);
+  }
+  return firebase.auth();
+}
+
+export function hasFirebaseConfig() {
+  return typeof window !== 'undefined' && !!window.FIREBASE_CONFIG;
+}
+
+export function getCurrentUser() {
+  if (!hasFirebaseConfig() || typeof firebase === 'undefined' || !firebase.apps || firebase.apps.length === 0) {
+    return null;
+  }
+  return firebase.auth().currentUser;
+}
+
+// App 啟動時呼叫一次，等待 Firebase 回報「目前到底有沒有登入」，
+// 避免畫面先以 localStorage 開，登入態確認後又跳成 Firestore 的閃爍。
+export function waitForFirstAuthState() {
+  if (!hasFirebaseConfig()) {
+    return Promise.resolve(null);
+  }
+  if (firstAuthStatePromise) {
+    return firstAuthStatePromise;
+  }
+  firstAuthStatePromise = new Promise((resolve) => {
+    let auth;
+    try {
+      auth = ensureAuthApp();
+    } catch (e) {
+      console.warn('Firebase Auth 初始化失敗，改用本機模式', e);
+      resolve(null);
+      return;
+    }
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      authInited = true;
+      unsubscribe();
+      resolve(user || null);
+    });
+  });
+  return firstAuthStatePromise;
+}
+
+// 訂閱後續登入狀態變化（登入、登出、被踢出）；回傳取消訂閱函式。
+export function onAuthChange(cb) {
+  if (!hasFirebaseConfig()) {
+    return () => {};
+  }
+  let auth;
+  try {
+    auth = ensureAuthApp();
+  } catch (e) {
+    console.warn('Firebase Auth 初始化失敗', e);
+    return () => {};
+  }
+  return auth.onAuthStateChanged(cb);
+}
+
+export async function signInWithGoogle() {
+  const auth = ensureAuthApp();
+  const provider = new firebase.auth.GoogleAuthProvider();
+  if (isMobileDevice()) {
+    await auth.signInWithRedirect(provider);
+  } else {
+    await auth.signInWithPopup(provider);
+  }
+}
+
+export async function signOutUser() {
+  if (!hasFirebaseConfig() || typeof firebase === 'undefined' || !firebase.apps || firebase.apps.length === 0) {
+    return;
+  }
+  await firebase.auth().signOut();
+}
+
+// ---------------------------------------------------------------------------
 // 後端選擇
 // ---------------------------------------------------------------------------
 
 let backend = null;
 
 function selectBackend() {
-  if (typeof window !== 'undefined' && window.FIREBASE_CONFIG) {
+  if (typeof window !== 'undefined' && window.FIREBASE_CONFIG && getCurrentUser()) {
     return createFirestoreBackend(window.FIREBASE_CONFIG);
   }
   return localBackend;
 }
 
 export async function init() {
+  if (hasFirebaseConfig()) {
+    await waitForFirstAuthState();
+  }
   backend = selectBackend();
   await backend.init();
+}
+
+// 登入／登出後呼叫：重新選擇後端並初始化。回傳新後端名稱。
+export async function reinitBackend() {
+  backend = selectBackend();
+  await backend.init();
+  return backend.name;
 }
 
 export function backendName() {

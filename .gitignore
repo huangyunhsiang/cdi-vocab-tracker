@@ -1,3 +1,4 @@
-js/firebase-config.js
+# firebase-config.js 本專案刻意入版控：Firebase web 設定值設計為客戶端公開，
+# 安全由 Firestore 規則的 email 白名單把關（見 firebase/firestore.rules）。
 私有題本/
 node_modules/
