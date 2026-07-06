@@ -1,12 +1,15 @@
 /**
- * service-worker.js — cache-first 靜態資源快取
+ * service-worker.js — network-first（離線可用）
  *
- * 策略：安裝時預先快取核心靜態資源；之後對這些資源一律 cache-first，
- * 快取沒有才 fallback 到網路。CDN 資源（Chart.js、Firebase、字型）不強制快取，
- * 交給瀏覽器 HTTP 快取處理，避免版本更新問題。
+ * 策略：同源請求一律 network-first——優先拿伺服器最新版並更新快取，
+ * 只有在離線／網路失敗時才 fallback 到快取。這樣程式碼更新能即時反映，
+ * 同時保留 PWA 離線可用性。CDN 資源（Chart.js、Firebase、字型）不攔截，
+ * 交給瀏覽器 HTTP 快取處理。
+ *
+ * 注意：改變快取策略或核心資產時，bump CACHE_NAME 版本號以清掉舊快取。
  */
 
-const CACHE_NAME = 'cdi-vocab-tracker-v1';
+const CACHE_NAME = 'cdi-vocab-tracker-v2';
 
 const CORE_ASSETS = [
   './',
@@ -17,6 +20,7 @@ const CORE_ASSETS = [
   './js/analytics.js',
   './js/categories.js',
   './js/wordlist-loader.js',
+  './js/firebase-config.js',
   './manifest.webmanifest',
   './icons/icon.svg',
 ];
@@ -42,19 +46,19 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // 只處理同源請求，CDN 請求交給瀏覽器原生處理
-  if (url.origin !== self.location.origin) return;
+  // 只處理同源 GET；CDN 與非 GET 交給瀏覽器原生處理
+  if (url.origin !== self.location.origin || event.request.method !== 'GET') return;
 
+  // network-first：優先網路，成功就更新快取；失敗（離線）才用快取
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request).then((response) => {
+    fetch(event.request)
+      .then((response) => {
         if (response && response.status === 200) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }
         return response;
-      }).catch(() => cached);
-    })
+      })
+      .catch(() => caches.match(event.request))
   );
 });
