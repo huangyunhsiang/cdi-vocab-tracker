@@ -495,11 +495,25 @@ function setupCloudSyncUI() {
   }
 
   signInBtn.addEventListener('click', async () => {
+    const originalText = signInBtn.textContent;
+    signInBtn.disabled = true;
+    signInBtn.textContent = '登入中…';
     try {
       await store.signInWithGoogle();
+      // 登入成功後的 UI 切換與「已登入」提示由 onAuthChange 統一處理，
+      // 這樣白名單被拒的情況才不會先跳「成功」又跳「不在白名單」。
     } catch (e) {
       console.error('Google 登入失敗', e);
-      showToast('登入失敗，請稍後再試');
+      if (e && e.code === 'auth/popup-blocked') {
+        showToast('瀏覽器擋住了登入視窗，請允許彈出視窗後再試一次');
+      } else if (e && (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request')) {
+        showToast('登入視窗被關閉，尚未完成登入');
+      } else {
+        showToast('登入失敗：' + (e && e.message ? e.message : '請稍後再試'));
+      }
+    } finally {
+      signInBtn.disabled = false;
+      signInBtn.textContent = originalText;
     }
   });
 
@@ -527,6 +541,7 @@ function setupCloudSyncUI() {
       }
 
       await refreshAll();
+      showToast('已登入為 ' + (user.email || '') + '，雲端同步已開啟');
     } catch (e) {
       if (isPermissionDenied(e)) {
         showOnly(deniedEl);
@@ -560,8 +575,10 @@ async function checkLocalHasData() {
   }
 }
 
-// 首次登入資料遷移：本機有資料、雲端對應集合為空 → 整批寫上雲端。
-// 雲端已有資料則視為以雲端為準，本機資料保留不動，不合併、不覆蓋。
+// 首次登入資料遷移：逐一集合判斷「雲端該集合為空 且 本機該集合有資料」→ 把該集合灌上雲。
+// 各集合獨立，不用「雲端全空」當總開關——否則只要載過題本（雲端 wordlist 非空），
+// 詞彙／手勢就會被誤判為「雲端非空」而永遠遷不上去。雲端該集合已有資料則以雲端為準，
+// 本機保留不動、不合併、不覆蓋。
 async function migrateLocalDataToCloudIfEmpty() {
   const localWords = JSON.parse(localStorage.getItem('cdi_words') || '[]');
   const localGestures = JSON.parse(localStorage.getItem('cdi_gestures') || '[]');
@@ -571,22 +588,22 @@ async function migrateLocalDataToCloudIfEmpty() {
   const cloudGestures = await store.listGestures();
   const cloudWordlist = await store.listWordlistEntries();
 
-  const cloudIsEmpty = cloudWords.length === 0 && cloudGestures.length === 0 && cloudWordlist.length === 0;
-  const localHasData = localWords.length > 0 || localGestures.length > 0 || localWordlist.length > 0;
+  // 各集合獨立判斷該不該從本機灌上雲
+  const wordsToMigrate = cloudWords.length === 0 ? localWords : [];
+  const gesturesToMigrate = cloudGestures.length === 0 ? localGestures : [];
+  const wordlistToMigrate = cloudWordlist.length === 0 ? localWordlist : [];
 
-  if (!cloudIsEmpty || !localHasData) {
-    return;
+  if (wordsToMigrate.length > 0 || gesturesToMigrate.length > 0) {
+    await store.importAll({ words: wordsToMigrate, gestures: gesturesToMigrate });
+  }
+  if (wordlistToMigrate.length > 0) {
+    await store.saveWordlistEntries(wordlistToMigrate);
   }
 
-  if (localWords.length > 0 || localGestures.length > 0) {
-    await store.importAll({ words: localWords, gestures: localGestures });
+  const migratedCount = wordsToMigrate.length + gesturesToMigrate.length + wordlistToMigrate.length;
+  if (migratedCount > 0) {
+    showToast(`已將本機 ${migratedCount} 筆記錄遷移至雲端`);
   }
-  if (localWordlist.length > 0) {
-    await store.saveWordlistEntries(localWordlist);
-  }
-
-  const migratedCount = localWords.length + localGestures.length + localWordlist.length;
-  showToast(`已將本機 ${migratedCount} 筆記錄遷移至雲端`);
 }
 
 function downloadFile(filename, content, mime) {

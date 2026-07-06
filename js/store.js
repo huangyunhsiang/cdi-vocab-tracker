@@ -255,11 +255,6 @@ function createFirestoreBackend(firebaseConfig) {
 let authInited = false;
 let firstAuthStatePromise = null;
 
-function isMobileDevice() {
-  if (typeof navigator === 'undefined') return false;
-  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
-}
-
 function ensureAuthApp() {
   if (typeof firebase === 'undefined') {
     throw new Error('Firebase compat SDK 尚未載入，請確認 index.html 有引入 firebase-auth-compat CDN script');
@@ -326,11 +321,12 @@ export function onAuthChange(cb) {
 export async function signInWithGoogle() {
   const auth = ensureAuthApp();
   const provider = new firebase.auth.GoogleAuthProvider();
-  if (isMobileDevice()) {
-    await auth.signInWithRedirect(provider);
-  } else {
-    await auth.signInWithPopup(provider);
-  }
+  // 一律用 popup（含手機）：本 app 網域（github.io）與 authDomain（firebaseapp.com）
+  // 不同，signInWithRedirect 會因手機瀏覽器第三方 storage 隔離（Safari ITP／Chrome
+  // storage partitioning）而在跳轉回來後拿不到登入狀態。popup 完成後直接回傳結果，
+  // 不依賴跨網域 storage，較可靠。若 popup 被瀏覽器攔截，錯誤碼會是 auth/popup-blocked。
+  const result = await auth.signInWithPopup(provider);
+  return result.user;
 }
 
 export async function signOutUser() {
