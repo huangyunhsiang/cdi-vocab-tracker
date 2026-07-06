@@ -26,6 +26,9 @@ export const CATEGORIES = [
   { id: 'clothing', name: '衣物', emoji: '👕' },
   { id: 'body_part', name: '身體部位', emoji: '👣' },
   { id: 'household', name: '家用品', emoji: '🏠' },
+  { id: 'furniture_room', name: '家具房間', emoji: '🛋️' },
+  { id: 'outside', name: '戶外事物', emoji: '🌳' },
+  { id: 'place', name: '地方場所', emoji: '🏫' },
   { id: 'people', name: '人物', emoji: '👪' },
   { id: 'routine_game', name: '遊戲與例行活動', emoji: '🎲' },
   { id: 'action', name: '動作詞', emoji: '🏃' },
@@ -34,6 +37,8 @@ export const CATEGORIES = [
   { id: 'pronoun', name: '代名詞', emoji: '🙋' },
   { id: 'question', name: '疑問詞', emoji: '❓' },
   { id: 'location', name: '位置詞', emoji: '📍' },
+  { id: 'quantifier', name: '量詞與數量', emoji: '🔢' },
+  { id: 'connecting', name: '連接詞', emoji: '🔗' },
   { id: 'social', name: '社交詞', emoji: '👋' },
   { id: 'other', name: '其他', emoji: '✨' },
 ];
