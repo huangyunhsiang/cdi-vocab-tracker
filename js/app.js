@@ -9,7 +9,7 @@ import * as store from './store.js';
 import * as analytics from './analytics.js';
 import { CATEGORIES, GESTURE_TYPES, getCategoryById } from './categories.js';
 import { parseWordlist } from './wordlist-loader.js';
-import { MILESTONES, ageInMonths, classifyAttainment } from './milestones.js';
+import { MILESTONES, ageInMonths, classifyAttainment, buildTimeline } from './milestones.js';
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const DEFAULT_BABY_BIRTH = '2025-07-21';
@@ -352,6 +352,7 @@ function renderWeeklyChart() {
 function renderAnalysisTab() {
   renderCategoryChart();
   renderGapSummary();
+  renderMotorSummary();
 }
 
 function renderCategoryChart() {
@@ -394,6 +395,32 @@ function renderGapSummary() {
   for (const [label, value] of rows) {
     const row = document.createElement('div');
     row.className = 'stat-row';
+    row.innerHTML = `<span class="stat-label">${label}</span><span>${value}</span>`;
+    wrap.appendChild(row);
+  }
+}
+
+function renderMotorSummary() {
+  const wrap = document.getElementById('motor-summary');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+
+  const timeline = buildTimeline(babyBirthDateCache, milestonesCache);
+  const achievedCount = timeline.filter((t) => t.achievedMonths !== null).length;
+
+  const headerRow = document.createElement('div');
+  headerRow.className = 'stat-row';
+  headerRow.innerHTML = `<span class="stat-label">已達成項目</span><span>${achievedCount}/${timeline.length}</span>`;
+  wrap.appendChild(headerRow);
+
+  for (const item of timeline) {
+    const row = document.createElement('div');
+    row.className = 'stat-row';
+    const label = `${item.emoji} ${item.name}`;
+    const value =
+      item.achievedMonths !== null
+        ? `達成時 ${item.achievedMonths} 個月大｜${ATTAINMENT_LABEL[item.attainment]}`
+        : '尚未記錄';
     row.innerHTML = `<span class="stat-label">${label}</span><span>${value}</span>`;
     wrap.appendChild(row);
   }
@@ -606,6 +633,163 @@ function renderMilestoneTab() {
       clearBtn.style.display = 'none';
     }
   }
+
+  renderMilestoneTimeline();
+}
+
+// SVG 命名空間（畫時間軸用）
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/** 建立 SVG 元素的小工具 */
+function svgEl(tag, attrs) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    el.setAttribute(k, v);
+  }
+  return el;
+}
+
+/**
+ * 畫「達成總覽時間軸」：X 軸為月齡 0~18，六項里程碑各一列，
+ * 每列顯示 WHO 窗口區間（p1~p99）、中位數標記，以及孩子實際達成位置（若有）。
+ */
+function renderMilestoneTimeline() {
+  const wrap = document.getElementById('milestone-timeline');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+
+  const timeline = buildTimeline(babyBirthDateCache, milestonesCache);
+
+  const MIN_MONTH = 0;
+  const MAX_MONTH = 18;
+  const VIEW_W = 400;
+  const VIEW_H = 40 + timeline.length * 34 + 30; // 頂部留白 + 每列 34px + 底部刻度區
+  const LABEL_W = 40; // 左側 emoji 標籤欄寬
+  const PLOT_X = LABEL_W + 8;
+  const PLOT_W = VIEW_W - PLOT_X - 12;
+  const ROW_H = 34;
+  const ROWS_TOP = 16;
+  const AXIS_Y = ROWS_TOP + timeline.length * ROW_H + 10;
+
+  const xForMonth = (m) => PLOT_X + (Math.min(Math.max(m, MIN_MONTH), MAX_MONTH) / (MAX_MONTH - MIN_MONTH)) * PLOT_W;
+
+  const svg = svgEl('svg', {
+    viewBox: `0 0 ${VIEW_W} ${VIEW_H}`,
+    width: '100%',
+    role: 'img',
+    'aria-label': '動作里程碑達成總覽時間軸',
+  });
+
+  // 各里程碑列：窗口色帶 + 中位數標記 + 孩子達成標記
+  timeline.forEach((item, i) => {
+    const rowY = ROWS_TOP + i * ROW_H;
+    const midY = rowY + ROW_H / 2;
+
+    const label = svgEl('text', {
+      x: 2,
+      y: midY + 4,
+      'font-size': 13,
+      fill: 'var(--color-ink)',
+    });
+    label.textContent = item.emoji;
+    svg.appendChild(label);
+
+    // WHO 窗口色帶（p1~p99）
+    const bandX1 = xForMonth(item.p1);
+    const bandX2 = xForMonth(item.p99);
+    svg.appendChild(
+      svgEl('rect', {
+        x: bandX1,
+        y: midY - 5,
+        width: Math.max(bandX2 - bandX1, 1),
+        height: 10,
+        rx: 5,
+        fill: 'var(--color-accent-soft)',
+        stroke: 'var(--color-border)',
+      })
+    );
+
+    // 中位數標記（小豎線）
+    const medX = xForMonth(item.median);
+    svg.appendChild(
+      svgEl('line', {
+        x1: medX,
+        x2: medX,
+        y1: midY - 7,
+        y2: midY + 7,
+        stroke: 'var(--color-ink-soft)',
+        'stroke-width': 1.5,
+      })
+    );
+
+    // 孩子達成標記
+    if (item.achievedMonths !== null) {
+      const achX = xForMonth(item.achievedMonths);
+      const colorVar =
+        item.attainment === 'early'
+          ? 'var(--color-understand)'
+          : item.attainment === 'late'
+            ? 'var(--color-danger)'
+            : 'var(--color-success)';
+      svg.appendChild(
+        svgEl('circle', {
+          cx: achX,
+          cy: midY,
+          r: 6,
+          fill: colorVar,
+          stroke: 'var(--color-surface)',
+          'stroke-width': 1.5,
+        })
+      );
+    }
+  });
+
+  // 底部月齡刻度
+  const ticks = [0, 3, 6, 9, 12, 15, 18];
+  svg.appendChild(
+    svgEl('line', {
+      x1: PLOT_X,
+      x2: PLOT_X + PLOT_W,
+      y1: AXIS_Y,
+      y2: AXIS_Y,
+      stroke: 'var(--color-border)',
+      'stroke-width': 1,
+    })
+  );
+  for (const t of ticks) {
+    const tx = xForMonth(t);
+    svg.appendChild(
+      svgEl('line', {
+        x1: tx,
+        x2: tx,
+        y1: AXIS_Y,
+        y2: AXIS_Y + 4,
+        stroke: 'var(--color-border)',
+        'stroke-width': 1,
+      })
+    );
+    const tickLabel = svgEl('text', {
+      x: tx,
+      y: AXIS_Y + 15,
+      'font-size': 9,
+      'text-anchor': 'middle',
+      fill: 'var(--color-ink-soft)',
+    });
+    tickLabel.textContent = t;
+    svg.appendChild(tickLabel);
+  }
+
+  wrap.appendChild(svg);
+
+  // 圖例
+  const legend = document.createElement('div');
+  legend.className = 'milestone-timeline-legend';
+  legend.innerHTML = `
+    <span><i class="legend-swatch legend-band"></i>WHO 窗口</span>
+    <span><i class="legend-swatch legend-median"></i>中位數</span>
+    <span><i class="legend-swatch legend-achieved"></i>孩子達成</span>
+  `;
+  wrap.appendChild(legend);
 }
 
 // ---------------------------------------------------------------------------

@@ -80,3 +80,45 @@ export function classifyAttainment(months, milestone) {
   if (months > milestone.p99) return 'late';
   return 'within';
 }
+
+/**
+ * 建立「達成總覽時間軸」所需的資料（純函式，不碰 DOM）。
+ *
+ * 依 MILESTONES 顯示順序，逐項附上（若有）孩子達成時的月齡與落點分類。
+ * 出生日期缺失或無效、或該項尚未有達成紀錄時，achievedMonths／attainment 一律為 null，
+ * 不丟出例外（呼叫端可安心對「未設生日」或「尚無任何紀錄」情境畫出純參考用時間軸）。
+ *
+ * @param {string} babyBirthDate - 出生日期 YYYY-MM-DD（可能為空字串或 undefined）
+ * @param {Array<{key: string, achievedDate?: string}>} records - milestones 記錄陣列
+ * @returns {Array<{key: string, name: string, emoji: string, p1: number, median: number,
+ *   p99: number, achievedMonths: number|null, attainment: ('early'|'within'|'late')|null}>}
+ */
+export function buildTimeline(babyBirthDate, records) {
+  const safeRecords = Array.isArray(records) ? records : [];
+  const hasValidBirth = typeof babyBirthDate === 'string' && babyBirthDate.trim().length > 0;
+
+  return MILESTONES.map((milestone) => {
+    const record = safeRecords.find((r) => r && r.key === milestone.key);
+    let achievedMonths = null;
+    let attainment = null;
+
+    if (hasValidBirth && record && record.achievedDate) {
+      const months = ageInMonths(babyBirthDate, record.achievedDate);
+      if (Number.isFinite(months)) {
+        achievedMonths = months;
+        attainment = classifyAttainment(months, milestone);
+      }
+    }
+
+    return {
+      key: milestone.key,
+      name: milestone.name,
+      emoji: milestone.emoji,
+      p1: milestone.p1,
+      median: milestone.median,
+      p99: milestone.p99,
+      achievedMonths,
+      attainment,
+    };
+  });
+}

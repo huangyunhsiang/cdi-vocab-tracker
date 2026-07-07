@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { MILESTONES, ageInMonths, classifyAttainment } from '../js/milestones.js';
+import { MILESTONES, ageInMonths, classifyAttainment, buildTimeline } from '../js/milestones.js';
 
 // ---------------------------------------------------------------------------
 // MILESTONES — 六項齊全且數字正確（WHO 2006 原始數字，不得改動）
@@ -112,4 +112,54 @@ test('classifyAttainment: 邊界值 p1／p99 本身視為 within', () => {
   const sitting = MILESTONES.find((m) => m.key === 'sitting');
   assert.equal(classifyAttainment(3.8, sitting), 'within');
   assert.equal(classifyAttainment(9.2, sitting), 'within');
+});
+
+// ---------------------------------------------------------------------------
+// buildTimeline
+// ---------------------------------------------------------------------------
+
+test('buildTimeline: 六項齊全且順序與 MILESTONES 一致', () => {
+  const timeline = buildTimeline('2025-07-21', []);
+  assert.equal(timeline.length, 6);
+  assert.deepEqual(
+    timeline.map((t) => t.key),
+    MILESTONES.map((m) => m.key)
+  );
+  for (const t of timeline) {
+    assert.equal(t.achievedMonths, null);
+    assert.equal(t.attainment, null);
+  }
+});
+
+test('buildTimeline: 有達成紀錄時 achievedMonths 與 attainment 正確（獨坐 6 個月大，within）', () => {
+  const records = [{ key: 'sitting', achievedDate: '2026-01-21' }];
+  const timeline = buildTimeline('2025-07-21', records);
+  const sitting = timeline.find((t) => t.key === 'sitting');
+  assert.equal(sitting.achievedMonths, 6.0);
+  assert.equal(sitting.attainment, 'within');
+
+  // 其餘項目未記錄，維持 null
+  const others = timeline.filter((t) => t.key !== 'sitting');
+  for (const t of others) {
+    assert.equal(t.achievedMonths, null);
+    assert.equal(t.attainment, null);
+  }
+});
+
+test('buildTimeline: 出生日期為空字串時 achievedMonths 全為 null 且不丟例外', () => {
+  const records = [{ key: 'sitting', achievedDate: '2026-01-21' }];
+  assert.doesNotThrow(() => {
+    const timeline = buildTimeline('', records);
+    for (const t of timeline) {
+      assert.equal(t.achievedMonths, null);
+      assert.equal(t.attainment, null);
+    }
+  });
+});
+
+test('buildTimeline: 出生日期為 undefined 時同樣安全（不丟例外）', () => {
+  assert.doesNotThrow(() => {
+    const timeline = buildTimeline(undefined, [{ key: 'sitting', achievedDate: '2026-01-21' }]);
+    assert.equal(timeline.find((t) => t.key === 'sitting').achievedMonths, null);
+  });
 });
