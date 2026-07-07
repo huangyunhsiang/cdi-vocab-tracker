@@ -14,6 +14,7 @@
  *   families/{familyId}/growth/{growthId}
  *   families/{familyId}/meta/wordlist　（{ entries: [...] }）
  *   families/{familyId}/meta/profile　（{ babyBirthDate: 'YYYY-MM-DD', babySex: 'boys'|'girls' }）
+ *   families/{familyId}/meta/devchecks　（{ checks: { "months_domain_index": true, ... } }）
  *
  * 對外 API：
  *   init(): Promise<void>
@@ -39,6 +40,8 @@
  *   clearAll(): Promise<void>
  *   listWordlistEntries(): Promise<WordlistEntry[]>
  *   saveWordlistEntries(entries): Promise<void>
+ *   getDevChecks(): Promise<Object<string, boolean>>
+ *   setDevCheck(key, bool): Promise<void>
  *
  * Auth API（僅在有 FIREBASE_CONFIG 時有意義；無 config 時皆為 no-op／回傳 null）：
  *   hasFirebaseConfig(): boolean
@@ -56,6 +59,7 @@ const LS_GESTURES_KEY = LS_PREFIX + 'gestures';
 const LS_WORDLIST_KEY = LS_PREFIX + 'wordlist';
 const LS_MILESTONES_KEY = LS_PREFIX + 'milestones';
 const LS_GROWTH_KEY = LS_PREFIX + 'growth';
+const LS_DEVCHECKS_KEY = LS_PREFIX + 'devchecks';
 const LS_BABY_BIRTH_KEY = LS_PREFIX + 'baby_birth';
 const LS_BABY_SEX_KEY = LS_PREFIX + 'baby_sex';
 const DEFAULT_BABY_SEX = 'boys';
@@ -178,6 +182,30 @@ const localBackend = {
     this._write(LS_GROWTH_KEY, growth);
   },
 
+  _readMap(key) {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) {
+      console.error('讀取 localStorage（map）失敗', key, e);
+      return {};
+    }
+  },
+
+  async getDevChecks() {
+    return this._readMap(LS_DEVCHECKS_KEY);
+  },
+
+  async setDevCheck(key, bool) {
+    const checks = this._readMap(LS_DEVCHECKS_KEY);
+    if (bool) {
+      checks[key] = true;
+    } else {
+      delete checks[key];
+    }
+    this._write(LS_DEVCHECKS_KEY, checks);
+  },
+
   async getBabyBirthDate() {
     return localStorage.getItem(LS_BABY_BIRTH_KEY) || null;
   },
@@ -200,6 +228,7 @@ const localBackend = {
       gestures: this._read(LS_GESTURES_KEY),
       milestones: this._read(LS_MILESTONES_KEY),
       growth: this._read(LS_GROWTH_KEY),
+      devchecks: this._readMap(LS_DEVCHECKS_KEY),
       babyBirthDate: localStorage.getItem(LS_BABY_BIRTH_KEY) || null,
       babySex: localStorage.getItem(LS_BABY_SEX_KEY) || DEFAULT_BABY_SEX,
     };
@@ -210,6 +239,9 @@ const localBackend = {
     if (Array.isArray(data.gestures)) this._write(LS_GESTURES_KEY, data.gestures);
     if (Array.isArray(data.milestones)) this._write(LS_MILESTONES_KEY, data.milestones);
     if (Array.isArray(data.growth)) this._write(LS_GROWTH_KEY, data.growth);
+    if (data.devchecks && typeof data.devchecks === 'object' && !Array.isArray(data.devchecks)) {
+      this._write(LS_DEVCHECKS_KEY, data.devchecks);
+    }
     if (typeof data.babyBirthDate === 'string' && data.babyBirthDate) {
       localStorage.setItem(LS_BABY_BIRTH_KEY, data.babyBirthDate);
     }
@@ -224,6 +256,7 @@ const localBackend = {
     localStorage.removeItem(LS_WORDLIST_KEY);
     localStorage.removeItem(LS_MILESTONES_KEY);
     localStorage.removeItem(LS_GROWTH_KEY);
+    localStorage.removeItem(LS_DEVCHECKS_KEY);
     localStorage.removeItem(LS_BABY_BIRTH_KEY);
     localStorage.removeItem(LS_BABY_SEX_KEY);
   },
@@ -361,15 +394,16 @@ function createFirestoreBackend(firebaseConfig) {
     },
 
     async exportAll() {
-      const [words, gestures, milestones, growth, babyBirthDate, babySex] = await Promise.all([
+      const [words, gestures, milestones, growth, devchecks, babyBirthDate, babySex] = await Promise.all([
         this.listWords(),
         this.listGestures(),
         this.listMilestones(),
         this.listGrowth(),
+        this.getDevChecks(),
         this.getBabyBirthDate(),
         this.getBabySex(),
       ]);
-      return { words, gestures, milestones, growth, babyBirthDate, babySex };
+      return { words, gestures, milestones, growth, devchecks, babyBirthDate, babySex };
     },
 
     async importAll(data) {
@@ -388,6 +422,13 @@ function createFirestoreBackend(firebaseConfig) {
       for (const gr of data.growth || []) {
         const id = gr.id || genId();
         batch.set(familyDoc('growth').doc(id), { ...gr, id });
+      }
+      if (data.devchecks && typeof data.devchecks === 'object' && !Array.isArray(data.devchecks)) {
+        batch.set(
+          db.collection('families').doc(FAMILY_ID).collection('meta').doc('devchecks'),
+          { checks: data.devchecks },
+          { merge: true }
+        );
       }
       if (typeof data.babyBirthDate === 'string' && data.babyBirthDate) {
         batch.set(
@@ -419,6 +460,7 @@ function createFirestoreBackend(firebaseConfig) {
       for (const m of milestones) batch.delete(familyDoc('milestones').doc(m.key));
       for (const gr of growth) batch.delete(familyDoc('growth').doc(gr.id));
       batch.delete(db.collection('families').doc(FAMILY_ID).collection('meta').doc('profile'));
+      batch.delete(db.collection('families').doc(FAMILY_ID).collection('meta').doc('devchecks'));
       await batch.commit();
     },
 
@@ -434,6 +476,26 @@ function createFirestoreBackend(firebaseConfig) {
         .collection('meta')
         .doc('wordlist')
         .set({ entries });
+    },
+
+    async getDevChecks() {
+      const doc = await db.collection('families').doc(FAMILY_ID).collection('meta').doc('devchecks').get();
+      return doc.exists ? doc.data().checks || {} : {};
+    },
+
+    async setDevCheck(key, bool) {
+      const checks = await this.getDevChecks();
+      if (bool) {
+        checks[key] = true;
+      } else {
+        delete checks[key];
+      }
+      await db
+        .collection('families')
+        .doc(FAMILY_ID)
+        .collection('meta')
+        .doc('devchecks')
+        .set({ checks });
     },
   };
 }
@@ -667,4 +729,14 @@ export async function getBabySex() {
 export async function setBabySex(sex) {
   ensureInit();
   return backend.setBabySex(sex);
+}
+
+export async function getDevChecks() {
+  ensureInit();
+  return backend.getDevChecks();
+}
+
+export async function setDevCheck(key, bool) {
+  ensureInit();
+  return backend.setDevCheck(key, bool);
 }

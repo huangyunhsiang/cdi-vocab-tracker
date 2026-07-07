@@ -391,6 +391,71 @@ nav.tab-bar button .tab-icon {
   color: var(--color-danger);
 }
 
+.devcheck-hint {
+  font-size: 0.85rem;
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  border-radius: 8px;
+  padding: var(--space-2) var(--space-3);
+  margin: var(--space-2) 0;
+}
+
+.devcheck-domain {
+  margin-top: var(--space-4);
+}
+
+.devcheck-domain:first-of-type {
+  margin-top: var(--space-3);
+}
+
+.devcheck-domain h3 {
+  font-size: 0.95rem;
+  margin: 0 0 var(--space-2);
+}
+
+.devcheck-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.devcheck-item {
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-2) 0;
+}
+
+.devcheck-item:last-child {
+  border-bottom: none;
+}
+
+.devcheck-item-label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  cursor: pointer;
+}
+
+.devcheck-item-label input[type="checkbox"] {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.devcheck-item-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.devcheck-zh {
+  font-size: 0.92rem;
+  color: var(--color-ink);
+}
+
+.devcheck-en {
+  font-size: 0.72rem;
+  color: var(--color-ink-soft);
+}
+
 #milestone-timeline svg {
   display: block;
   width: 100%;

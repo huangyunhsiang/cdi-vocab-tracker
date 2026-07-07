@@ -12,6 +12,8 @@ import { parseWordlist } from './wordlist-loader.js';
 import { MILESTONES, ageInMonths, classifyAttainment, buildTimeline } from './milestones.js';
 import { percentileFor, whoCurve } from './growth.js';
 import { GROWTH_STANDARDS } from './growth-standards.js';
+import { DEV_MILESTONES } from './dev-milestones.js';
+import { currentCheckpoint, checkpointProgress } from './dev-check.js';
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const DEFAULT_BABY_BIRTH = '2025-07-21';
@@ -22,6 +24,8 @@ let gesturesCache = [];
 let wordlistCache = [];
 let milestonesCache = [];
 let growthCache = [];
+let devChecksCache = {};
+let devCheckSelectedMonths = null;
 let babyBirthDateCache = DEFAULT_BABY_BIRTH;
 let babySexCache = DEFAULT_BABY_SEX;
 
@@ -50,6 +54,7 @@ async function main() {
   setupWordlistTab();
   setupMilestoneTab();
   setupGrowthTab();
+  setupDevCheckTab();
   setupSettingsTab();
   setupCloudSyncUI();
 
@@ -80,6 +85,7 @@ async function refreshAll() {
   wordlistCache = await store.listWordlistEntries();
   milestonesCache = await store.listMilestones();
   growthCache = await store.listGrowth();
+  devChecksCache = await store.getDevChecks();
   babyBirthDateCache = (await store.getBabyBirthDate()) || DEFAULT_BABY_BIRTH;
   babySexCache = (await store.getBabySex()) || DEFAULT_BABY_SEX;
 
@@ -94,6 +100,7 @@ async function refreshAll() {
   renderWordlistPreview();
   renderMilestoneTab();
   renderGrowthTab();
+  renderDevCheckTab();
 }
 
 // ---------------------------------------------------------------------------
@@ -113,6 +120,7 @@ function setupTabNav() {
       if (btn.dataset.tab === 'tab-analysis') renderAnalysisTab();
       if (btn.dataset.tab === 'tab-milestone') renderMilestoneTab();
       if (btn.dataset.tab === 'tab-growth') renderGrowthTab();
+      if (btn.dataset.tab === 'tab-devcheck') renderDevCheckTab();
     });
   });
 }
@@ -975,6 +983,123 @@ function renderGrowthChart(indicator) {
 }
 
 // ---------------------------------------------------------------------------
+// 發展檢核頁（CDC 全領域里程碑）
+// ---------------------------------------------------------------------------
+
+const DEV_DOMAIN_LABEL = {
+  social_emotional: '社會情緒',
+  language: '語言溝通',
+  cognitive: '認知',
+  movement: '動作',
+};
+
+function setupDevCheckTab() {
+  const selectEl = document.getElementById('input-devcheck-age');
+  if (!selectEl) return;
+
+  selectEl.innerHTML = '';
+  for (const entry of DEV_MILESTONES) {
+    const opt = document.createElement('option');
+    opt.value = String(entry.months);
+    opt.textContent = entry.label;
+    selectEl.appendChild(opt);
+  }
+
+  selectEl.addEventListener('change', () => {
+    devCheckSelectedMonths = Number(selectEl.value);
+    renderDevCheckBody();
+  });
+}
+
+function renderDevCheckTab() {
+  const selectEl = document.getElementById('input-devcheck-age');
+  if (!selectEl) return;
+
+  if (devCheckSelectedMonths === null) {
+    const auto = currentCheckpoint(babyBirthDateCache, todayStr());
+    devCheckSelectedMonths = auto !== null ? auto : DEV_MILESTONES[0].months;
+  }
+
+  selectEl.value = String(devCheckSelectedMonths);
+  renderDevCheckBody();
+}
+
+function renderDevCheckBody() {
+  const wrap = document.getElementById('devcheck-body');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+
+  const entry = DEV_MILESTONES.find((m) => m.months === devCheckSelectedMonths);
+  if (!entry) return;
+
+  const progress = checkpointProgress(devChecksCache, devCheckSelectedMonths);
+
+  const summary = document.createElement('div');
+  summary.className = 'stat-row';
+  summary.innerHTML = `<span class="stat-label">整體達成</span><span>${progress.done}/${progress.total}</span>`;
+  wrap.appendChild(summary);
+
+  const ratio = progress.total > 0 ? progress.done / progress.total : 0;
+  if (progress.total > 0 && ratio < 0.5) {
+    const hint = document.createElement('div');
+    hint.className = 'devcheck-hint';
+    hint.textContent = '多數項目尚未達成，可與兒科醫師討論，非診斷結論。';
+    wrap.appendChild(hint);
+  }
+
+  for (const domain of Object.keys(entry.domains)) {
+    const items = entry.domains[domain];
+    const domainProgress = progress.byDomain[domain] || { total: items.length, done: 0 };
+
+    const domainCard = document.createElement('div');
+    domainCard.className = 'devcheck-domain';
+
+    const title = document.createElement('h3');
+    title.textContent = `${DEV_DOMAIN_LABEL[domain] || domain}（${domainProgress.done}/${domainProgress.total}）`;
+    domainCard.appendChild(title);
+
+    const list = document.createElement('ul');
+    list.className = 'devcheck-list';
+
+    items.forEach((item, index) => {
+      const key = `${devCheckSelectedMonths}_${domain}_${index}`;
+      const li = document.createElement('li');
+      li.className = 'devcheck-item';
+
+      const label = document.createElement('label');
+      label.className = 'devcheck-item-label';
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = !!devChecksCache[key];
+      checkbox.addEventListener('change', () => onToggleDevCheck(key, checkbox.checked));
+
+      const textWrap = document.createElement('span');
+      textWrap.className = 'devcheck-item-text';
+      textWrap.innerHTML = `<span class="devcheck-zh">${escapeHtml(item.zh)}</span><span class="devcheck-en">${escapeHtml(item.en)}</span>`;
+
+      label.appendChild(checkbox);
+      label.appendChild(textWrap);
+      li.appendChild(label);
+      list.appendChild(li);
+    });
+
+    domainCard.appendChild(list);
+    wrap.appendChild(domainCard);
+  }
+}
+
+async function onToggleDevCheck(key, checked) {
+  await store.setDevCheck(key, checked);
+  if (checked) {
+    devChecksCache[key] = true;
+  } else {
+    delete devChecksCache[key];
+  }
+  renderDevCheckBody();
+}
+
+// ---------------------------------------------------------------------------
 // 設定頁
 // ---------------------------------------------------------------------------
 
@@ -1120,6 +1245,7 @@ async function checkLocalHasData() {
       wordlist: JSON.parse(localStorage.getItem('cdi_wordlist') || '[]'),
       milestones: JSON.parse(localStorage.getItem('cdi_milestones') || '[]'),
       growth: JSON.parse(localStorage.getItem('cdi_growth') || '[]'),
+      devchecks: JSON.parse(localStorage.getItem('cdi_devchecks') || '{}'),
     };
     const babyBirth = localStorage.getItem('cdi_baby_birth');
     const babySex = localStorage.getItem('cdi_baby_sex');
@@ -1129,6 +1255,7 @@ async function checkLocalHasData() {
       raw.wordlist.length > 0 ||
       raw.milestones.length > 0 ||
       raw.growth.length > 0 ||
+      Object.keys(raw.devchecks).length > 0 ||
       !!babyBirth ||
       !!babySex
     );
@@ -1140,13 +1267,14 @@ async function checkLocalHasData() {
 // 首次登入資料遷移：逐一集合判斷「雲端該集合為空 且 本機該集合有資料」→ 把該集合灌上雲。
 // 各集合獨立，不用「雲端全空」當總開關——否則只要載過題本（雲端 wordlist 非空），
 // 詞彙／手勢就會被誤判為「雲端非空」而永遠遷不上去。雲端該集合已有資料則以雲端為準，
-// 本機保留不動、不合併、不覆蓋。milestones／babyBirth 比照 words 模式獨立判斷。
+// 本機保留不動、不合併、不覆蓋。milestones／babyBirth／devchecks 比照 words 模式獨立判斷。
 async function migrateLocalDataToCloudIfEmpty() {
   const localWords = JSON.parse(localStorage.getItem('cdi_words') || '[]');
   const localGestures = JSON.parse(localStorage.getItem('cdi_gestures') || '[]');
   const localWordlist = JSON.parse(localStorage.getItem('cdi_wordlist') || '[]');
   const localMilestones = JSON.parse(localStorage.getItem('cdi_milestones') || '[]');
   const localGrowth = JSON.parse(localStorage.getItem('cdi_growth') || '[]');
+  const localDevChecks = JSON.parse(localStorage.getItem('cdi_devchecks') || '{}');
   const localBabyBirth = localStorage.getItem('cdi_baby_birth');
   const localBabySex = localStorage.getItem('cdi_baby_sex');
 
@@ -1155,6 +1283,7 @@ async function migrateLocalDataToCloudIfEmpty() {
   const cloudWordlist = await store.listWordlistEntries();
   const cloudMilestones = await store.listMilestones();
   const cloudGrowth = await store.listGrowth();
+  const cloudDevChecks = await store.getDevChecks();
   const cloudBabyBirth = await store.getBabyBirthDate();
   const cloudBabySex = await store.getBabySex();
 
@@ -1164,6 +1293,8 @@ async function migrateLocalDataToCloudIfEmpty() {
   const wordlistToMigrate = cloudWordlist.length === 0 ? localWordlist : [];
   const milestonesToMigrate = cloudMilestones.length === 0 ? localMilestones : [];
   const growthToMigrate = cloudGrowth.length === 0 ? localGrowth : [];
+  const devChecksToMigrate =
+    Object.keys(cloudDevChecks).length === 0 && Object.keys(localDevChecks).length > 0 ? localDevChecks : null;
   const babyBirthToMigrate = !cloudBabyBirth && localBabyBirth ? localBabyBirth : null;
   const babySexToMigrate = (!cloudBabySex || cloudBabySex === DEFAULT_BABY_SEX) && localBabySex ? localBabySex : null;
 
@@ -1172,6 +1303,7 @@ async function migrateLocalDataToCloudIfEmpty() {
     gesturesToMigrate.length > 0 ||
     milestonesToMigrate.length > 0 ||
     growthToMigrate.length > 0 ||
+    devChecksToMigrate ||
     babyBirthToMigrate ||
     babySexToMigrate
   ) {
@@ -1180,6 +1312,7 @@ async function migrateLocalDataToCloudIfEmpty() {
       gestures: gesturesToMigrate,
       milestones: milestonesToMigrate,
       growth: growthToMigrate,
+      devchecks: devChecksToMigrate,
       babyBirthDate: babyBirthToMigrate,
       babySex: babySexToMigrate,
     });
@@ -1194,6 +1327,7 @@ async function migrateLocalDataToCloudIfEmpty() {
     wordlistToMigrate.length +
     milestonesToMigrate.length +
     growthToMigrate.length +
+    (devChecksToMigrate ? Object.keys(devChecksToMigrate).length : 0) +
     (babyBirthToMigrate ? 1 : 0) +
     (babySexToMigrate ? 1 : 0);
   if (migratedCount > 0) {

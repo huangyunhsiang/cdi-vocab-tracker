@@ -176,6 +176,21 @@
     </div>
   </section>
 
+  <!-- 發展檢核頁 -->
+  <section id="tab-devcheck" class="tab-panel" aria-labelledby="nav-devcheck">
+    <div class="copyright-note">
+      發展篩檢參考採 CDC「Learn the Signs. Act Early.」全領域里程碑檢核表（社會情緒／語言溝通／認知／動作），約 75%
+      同齡兒童能做到，為發展檢核參考，非診斷工具；未達成不代表異常；早產寶寶請以矯正年齡計算；若對發展有疑慮，請諮詢兒科醫師或兒童發展聯合評估中心。
+    </div>
+
+    <div class="card">
+      <label for="input-devcheck-age">選擇年齡檢查點</label>
+      <select id="input-devcheck-age"></select>
+    </div>
+
+    <div class="card" id="devcheck-body"></div>
+  </section>
+
   <!-- 題本頁 -->
   <section id="tab-wordlist" class="tab-panel" aria-labelledby="nav-wordlist">
     <div class="copyright-note">
@@ -261,6 +276,7 @@
   <button id="nav-analysis" data-tab="tab-analysis"><span class="tab-icon">📊</span>分析</button>
   <button id="nav-milestone" data-tab="tab-milestone"><span class="tab-icon">🚼</span>里程碑</button>
   <button id="nav-growth" data-tab="tab-growth"><span class="tab-icon">📏</span>生長</button>
+  <button id="nav-devcheck" data-tab="tab-devcheck"><span class="tab-icon">✅</span>檢核</button>
   <button id="nav-wordlist" data-tab="tab-wordlist"><span class="tab-icon">📖</span>題本</button>
   <button id="nav-settings" data-tab="tab-settings"><span class="tab-icon">⚙️</span>設定</button>
 </nav>
