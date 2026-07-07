@@ -598,6 +598,9 @@ function renderMilestoneTab() {
       resultDiv.className = 'milestone-result attainment-' + attainment;
       clearBtn.style.display = '';
     } else {
+      // 未記錄（含剛清除）：一併清空輸入框，避免殘留已清除的日期／備註
+      dateInput.value = '';
+      if (noteInput) noteInput.value = '';
       resultDiv.textContent = '尚未記錄';
       resultDiv.className = 'milestone-result';
       clearBtn.style.display = 'none';
