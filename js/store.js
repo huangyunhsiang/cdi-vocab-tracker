@@ -11,8 +11,9 @@
  *   families/{familyId}/words/{wordId}
  *   families/{familyId}/gestures/{gestureId}
  *   families/{familyId}/milestones/{milestoneKey}
+ *   families/{familyId}/growth/{growthId}
  *   families/{familyId}/meta/wordlist　（{ entries: [...] }）
- *   families/{familyId}/meta/profile　（{ babyBirthDate: 'YYYY-MM-DD' }）
+ *   families/{familyId}/meta/profile　（{ babyBirthDate: 'YYYY-MM-DD', babySex: 'boys'|'girls' }）
  *
  * 對外 API：
  *   init(): Promise<void>
@@ -26,9 +27,14 @@
  *   listMilestones(): Promise<MilestoneRecord[]>
  *   upsertMilestone(record): Promise<MilestoneRecord>
  *   deleteMilestone(key): Promise<void>
+ *   listGrowth(): Promise<GrowthRecord[]>
+ *   upsertGrowth(record): Promise<GrowthRecord>
+ *   deleteGrowth(id): Promise<void>
  *   getBabyBirthDate(): Promise<string|null>
  *   setBabyBirthDate(dateStr): Promise<void>
- *   exportAll(): Promise<{words, gestures, milestones, babyBirthDate}>
+ *   getBabySex(): Promise<string>　— 'boys' | 'girls'，預設 'boys'
+ *   setBabySex(sex): Promise<void>
+ *   exportAll(): Promise<{words, gestures, milestones, growth, babyBirthDate, babySex}>
  *   importAll(data): Promise<void>
  *   clearAll(): Promise<void>
  *   listWordlistEntries(): Promise<WordlistEntry[]>
@@ -49,7 +55,10 @@ const LS_WORDS_KEY = LS_PREFIX + 'words';
 const LS_GESTURES_KEY = LS_PREFIX + 'gestures';
 const LS_WORDLIST_KEY = LS_PREFIX + 'wordlist';
 const LS_MILESTONES_KEY = LS_PREFIX + 'milestones';
+const LS_GROWTH_KEY = LS_PREFIX + 'growth';
 const LS_BABY_BIRTH_KEY = LS_PREFIX + 'baby_birth';
+const LS_BABY_SEX_KEY = LS_PREFIX + 'baby_sex';
+const DEFAULT_BABY_SEX = 'boys';
 const FAMILY_ID = 'default';
 
 function genId() {
@@ -147,6 +156,28 @@ const localBackend = {
     this._write(LS_MILESTONES_KEY, milestones);
   },
 
+  async listGrowth() {
+    return this._read(LS_GROWTH_KEY);
+  },
+
+  async upsertGrowth(record) {
+    const growth = this._read(LS_GROWTH_KEY);
+    const idx = growth.findIndex((g) => g.id === record.id);
+    const saved = { ...record, id: record.id || genId() };
+    if (idx >= 0) {
+      growth[idx] = saved;
+    } else {
+      growth.push(saved);
+    }
+    this._write(LS_GROWTH_KEY, growth);
+    return saved;
+  },
+
+  async deleteGrowth(id) {
+    const growth = this._read(LS_GROWTH_KEY).filter((g) => g.id !== id);
+    this._write(LS_GROWTH_KEY, growth);
+  },
+
   async getBabyBirthDate() {
     return localStorage.getItem(LS_BABY_BIRTH_KEY) || null;
   },
@@ -155,12 +186,22 @@ const localBackend = {
     localStorage.setItem(LS_BABY_BIRTH_KEY, dateStr);
   },
 
+  async getBabySex() {
+    return localStorage.getItem(LS_BABY_SEX_KEY) || DEFAULT_BABY_SEX;
+  },
+
+  async setBabySex(sex) {
+    localStorage.setItem(LS_BABY_SEX_KEY, sex);
+  },
+
   async exportAll() {
     return {
       words: this._read(LS_WORDS_KEY),
       gestures: this._read(LS_GESTURES_KEY),
       milestones: this._read(LS_MILESTONES_KEY),
+      growth: this._read(LS_GROWTH_KEY),
       babyBirthDate: localStorage.getItem(LS_BABY_BIRTH_KEY) || null,
+      babySex: localStorage.getItem(LS_BABY_SEX_KEY) || DEFAULT_BABY_SEX,
     };
   },
 
@@ -168,8 +209,12 @@ const localBackend = {
     if (Array.isArray(data.words)) this._write(LS_WORDS_KEY, data.words);
     if (Array.isArray(data.gestures)) this._write(LS_GESTURES_KEY, data.gestures);
     if (Array.isArray(data.milestones)) this._write(LS_MILESTONES_KEY, data.milestones);
+    if (Array.isArray(data.growth)) this._write(LS_GROWTH_KEY, data.growth);
     if (typeof data.babyBirthDate === 'string' && data.babyBirthDate) {
       localStorage.setItem(LS_BABY_BIRTH_KEY, data.babyBirthDate);
+    }
+    if (typeof data.babySex === 'string' && data.babySex) {
+      localStorage.setItem(LS_BABY_SEX_KEY, data.babySex);
     }
   },
 
@@ -178,7 +223,9 @@ const localBackend = {
     localStorage.removeItem(LS_GESTURES_KEY);
     localStorage.removeItem(LS_WORDLIST_KEY);
     localStorage.removeItem(LS_MILESTONES_KEY);
+    localStorage.removeItem(LS_GROWTH_KEY);
     localStorage.removeItem(LS_BABY_BIRTH_KEY);
+    localStorage.removeItem(LS_BABY_SEX_KEY);
   },
 
   async listWordlistEntries() {
@@ -269,6 +316,22 @@ function createFirestoreBackend(firebaseConfig) {
       await familyDoc('milestones').doc(key).delete();
     },
 
+    async listGrowth() {
+      const snap = await familyDoc('growth').get();
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
+
+    async upsertGrowth(record) {
+      const id = record.id || genId();
+      const saved = { ...record, id };
+      await familyDoc('growth').doc(id).set(saved);
+      return saved;
+    },
+
+    async deleteGrowth(id) {
+      await familyDoc('growth').doc(id).delete();
+    },
+
     async getBabyBirthDate() {
       const doc = await db.collection('families').doc(FAMILY_ID).collection('meta').doc('profile').get();
       return doc.exists ? doc.data().babyBirthDate || null : null;
@@ -283,14 +346,30 @@ function createFirestoreBackend(firebaseConfig) {
         .set({ babyBirthDate: dateStr }, { merge: true });
     },
 
+    async getBabySex() {
+      const doc = await db.collection('families').doc(FAMILY_ID).collection('meta').doc('profile').get();
+      return doc.exists ? doc.data().babySex || 'boys' : 'boys';
+    },
+
+    async setBabySex(sex) {
+      await db
+        .collection('families')
+        .doc(FAMILY_ID)
+        .collection('meta')
+        .doc('profile')
+        .set({ babySex: sex }, { merge: true });
+    },
+
     async exportAll() {
-      const [words, gestures, milestones, babyBirthDate] = await Promise.all([
+      const [words, gestures, milestones, growth, babyBirthDate, babySex] = await Promise.all([
         this.listWords(),
         this.listGestures(),
         this.listMilestones(),
+        this.listGrowth(),
         this.getBabyBirthDate(),
+        this.getBabySex(),
       ]);
-      return { words, gestures, milestones, babyBirthDate };
+      return { words, gestures, milestones, growth, babyBirthDate, babySex };
     },
 
     async importAll(data) {
@@ -306,6 +385,10 @@ function createFirestoreBackend(firebaseConfig) {
       for (const m of data.milestones || []) {
         batch.set(familyDoc('milestones').doc(m.key), { ...m });
       }
+      for (const gr of data.growth || []) {
+        const id = gr.id || genId();
+        batch.set(familyDoc('growth').doc(id), { ...gr, id });
+      }
       if (typeof data.babyBirthDate === 'string' && data.babyBirthDate) {
         batch.set(
           db.collection('families').doc(FAMILY_ID).collection('meta').doc('profile'),
@@ -313,19 +396,28 @@ function createFirestoreBackend(firebaseConfig) {
           { merge: true }
         );
       }
+      if (typeof data.babySex === 'string' && data.babySex) {
+        batch.set(
+          db.collection('families').doc(FAMILY_ID).collection('meta').doc('profile'),
+          { babySex: data.babySex },
+          { merge: true }
+        );
+      }
       await batch.commit();
     },
 
     async clearAll() {
-      const [words, gestures, milestones] = await Promise.all([
+      const [words, gestures, milestones, growth] = await Promise.all([
         this.listWords(),
         this.listGestures(),
         this.listMilestones(),
+        this.listGrowth(),
       ]);
       const batch = db.batch();
       for (const w of words) batch.delete(familyDoc('words').doc(w.id));
       for (const g of gestures) batch.delete(familyDoc('gestures').doc(g.id));
       for (const m of milestones) batch.delete(familyDoc('milestones').doc(m.key));
+      for (const gr of growth) batch.delete(familyDoc('growth').doc(gr.id));
       batch.delete(db.collection('families').doc(FAMILY_ID).collection('meta').doc('profile'));
       await batch.commit();
     },
@@ -550,4 +642,29 @@ export async function getBabyBirthDate() {
 export async function setBabyBirthDate(dateStr) {
   ensureInit();
   return backend.setBabyBirthDate(dateStr);
+}
+
+export async function listGrowth() {
+  ensureInit();
+  return backend.listGrowth();
+}
+
+export async function upsertGrowth(record) {
+  ensureInit();
+  return backend.upsertGrowth(record);
+}
+
+export async function deleteGrowth(id) {
+  ensureInit();
+  return backend.deleteGrowth(id);
+}
+
+export async function getBabySex() {
+  ensureInit();
+  return backend.getBabySex();
+}
+
+export async function setBabySex(sex) {
+  ensureInit();
+  return backend.setBabySex(sex);
 }

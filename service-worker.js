@@ -9,7 +9,7 @@
  * 注意：改變快取策略或核心資產時，bump CACHE_NAME 版本號以清掉舊快取。
  */
 
-const CACHE_NAME = 'cdi-vocab-tracker-v4';
+const CACHE_NAME = 'cdi-vocab-tracker-v5';
 
 const CORE_ASSETS = [
   './',
@@ -20,6 +20,8 @@ const CORE_ASSETS = [
   './js/analytics.js',
   './js/categories.js',
   './js/milestones.js',
+  './js/growth.js',
+  './js/growth-standards.js',
   './js/wordlist-loader.js',
   './js/firebase-config.js',
   './manifest.webmanifest',

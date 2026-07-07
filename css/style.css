@@ -251,10 +251,13 @@ nav.tab-bar {
   display: flex;
   max-width: 430px;
   margin: 0 auto;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 nav.tab-bar button {
-  flex: 1;
+  flex: 1 0 auto;
+  min-width: 58px;
   background: none;
   border: none;
   border-radius: 0;
@@ -265,6 +268,7 @@ nav.tab-bar button {
   flex-direction: column;
   align-items: center;
   gap: 2px;
+  white-space: nowrap;
 }
 
 nav.tab-bar button.active {
@@ -431,4 +435,11 @@ nav.tab-bar button .tab-icon {
 
 .legend-achieved {
   background: var(--color-success);
+}
+
+#growth-result {
+  font-size: 0.88rem;
+  color: var(--color-ink-soft);
+  text-align: center;
+  margin-top: var(--space-2);
 }

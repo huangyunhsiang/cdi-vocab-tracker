@@ -124,6 +124,58 @@
     <div id="milestone-cards"></div>
   </section>
 
+  <!-- 生長頁 -->
+  <section id="tab-growth" class="tab-panel" aria-labelledby="nav-growth">
+    <div class="copyright-note">
+      生長參考採 WHO Child Growth Standards（0–24 個月），為發展參考非診斷；單次測量意義有限，請看趨勢；早產寶寶請以矯正年齡計算；如有異常請諮詢兒科醫師。資料來源：<span id="growth-citation"></span>
+    </div>
+
+    <div class="card">
+      <h2>記錄測量</h2>
+      <label for="input-growth-indicator">指標</label>
+      <select id="input-growth-indicator">
+        <option value="weight">體重（kg）</option>
+        <option value="length">身長/身高（cm）</option>
+        <option value="head">頭圍（cm）</option>
+      </select>
+
+      <label for="input-growth-date">日期</label>
+      <input type="date" id="input-growth-date">
+
+      <label for="input-growth-value">數值</label>
+      <input type="number" step="0.01" id="input-growth-value" placeholder="依所選指標單位輸入">
+
+      <label for="input-growth-recorder">記錄者</label>
+      <select id="input-growth-recorder">
+        <option value="爸爸">爸爸</option>
+        <option value="媽媽">媽媽</option>
+      </select>
+
+      <button class="full-width" id="btn-add-growth">記錄</button>
+      <div id="growth-result"></div>
+    </div>
+
+    <div class="card">
+      <h2>體重曲線</h2>
+      <div class="chart-wrap"><canvas id="chart-growth-weight"></canvas></div>
+    </div>
+
+    <div class="card">
+      <h2>身長/身高曲線</h2>
+      <div class="chart-wrap"><canvas id="chart-growth-length"></canvas></div>
+    </div>
+
+    <div class="card">
+      <h2>頭圍曲線</h2>
+      <div class="chart-wrap"><canvas id="chart-growth-head"></canvas></div>
+    </div>
+
+    <div class="card">
+      <h2>測量記錄</h2>
+      <ul class="word-list" id="growth-list"></ul>
+    </div>
+  </section>
+
   <!-- 題本頁 -->
   <section id="tab-wordlist" class="tab-panel" aria-labelledby="nav-wordlist">
     <div class="copyright-note">
@@ -150,7 +202,14 @@
       <h2>寶寶基本資料</h2>
       <label for="input-baby-birth">寶寶出生日期</label>
       <input type="date" id="input-baby-birth" value="2025-07-21">
-      <button class="full-width secondary" id="btn-save-baby-birth">儲存出生日期</button>
+
+      <label for="input-baby-sex">寶寶性別</label>
+      <select id="input-baby-sex">
+        <option value="boys">男孩</option>
+        <option value="girls">女孩</option>
+      </select>
+
+      <button class="full-width secondary" id="btn-save-baby-birth">儲存基本資料</button>
     </div>
 
     <div class="card">
@@ -201,6 +260,7 @@
   <button id="nav-curve" data-tab="tab-curve"><span class="tab-icon">📈</span>曲線</button>
   <button id="nav-analysis" data-tab="tab-analysis"><span class="tab-icon">📊</span>分析</button>
   <button id="nav-milestone" data-tab="tab-milestone"><span class="tab-icon">🚼</span>里程碑</button>
+  <button id="nav-growth" data-tab="tab-growth"><span class="tab-icon">📏</span>生長</button>
   <button id="nav-wordlist" data-tab="tab-wordlist"><span class="tab-icon">📖</span>題本</button>
   <button id="nav-settings" data-tab="tab-settings"><span class="tab-icon">⚙️</span>設定</button>
 </nav>

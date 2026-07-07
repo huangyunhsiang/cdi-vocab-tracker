@@ -10,19 +10,27 @@ import * as analytics from './analytics.js';
 import { CATEGORIES, GESTURE_TYPES, getCategoryById } from './categories.js';
 import { parseWordlist } from './wordlist-loader.js';
 import { MILESTONES, ageInMonths, classifyAttainment, buildTimeline } from './milestones.js';
+import { percentileFor, whoCurve } from './growth.js';
+import { GROWTH_STANDARDS } from './growth-standards.js';
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const DEFAULT_BABY_BIRTH = '2025-07-21';
+const DEFAULT_BABY_SEX = 'boys';
 
 let wordsCache = [];
 let gesturesCache = [];
 let wordlistCache = [];
 let milestonesCache = [];
+let growthCache = [];
 let babyBirthDateCache = DEFAULT_BABY_BIRTH;
+let babySexCache = DEFAULT_BABY_SEX;
 
 let chartCumulative = null;
 let chartWeekly = null;
 let chartCategory = null;
+let chartGrowthWeight = null;
+let chartGrowthLength = null;
+let chartGrowthHead = null;
 
 // ---------------------------------------------------------------------------
 // 初始化
@@ -41,6 +49,7 @@ async function main() {
   setupRecordForm();
   setupWordlistTab();
   setupMilestoneTab();
+  setupGrowthTab();
   setupSettingsTab();
   setupCloudSyncUI();
 
@@ -70,16 +79,21 @@ async function refreshAll() {
   gesturesCache = await store.listGestures();
   wordlistCache = await store.listWordlistEntries();
   milestonesCache = await store.listMilestones();
+  growthCache = await store.listGrowth();
   babyBirthDateCache = (await store.getBabyBirthDate()) || DEFAULT_BABY_BIRTH;
+  babySexCache = (await store.getBabySex()) || DEFAULT_BABY_SEX;
 
   const babyBirthInput = document.getElementById('input-baby-birth');
   if (babyBirthInput) babyBirthInput.value = babyBirthDateCache;
+  const babySexInput = document.getElementById('input-baby-sex');
+  if (babySexInput) babySexInput.value = babySexCache;
 
   renderWordList();
   renderCurveTab();
   renderAnalysisTab();
   renderWordlistPreview();
   renderMilestoneTab();
+  renderGrowthTab();
 }
 
 // ---------------------------------------------------------------------------
@@ -98,6 +112,7 @@ function setupTabNav() {
       if (btn.dataset.tab === 'tab-curve') renderCurveTab();
       if (btn.dataset.tab === 'tab-analysis') renderAnalysisTab();
       if (btn.dataset.tab === 'tab-milestone') renderMilestoneTab();
+      if (btn.dataset.tab === 'tab-growth') renderGrowthTab();
     });
   });
 }
@@ -793,6 +808,173 @@ function renderMilestoneTimeline() {
 }
 
 // ---------------------------------------------------------------------------
+// 生長頁
+// ---------------------------------------------------------------------------
+
+const GROWTH_INDICATOR_KEYS = ['weight', 'length', 'head'];
+const GROWTH_PERCENTILE_LINES = [3, 15, 50, 85, 97];
+const GROWTH_PERCENTILE_COLORS = {
+  3: '#c9b8a3',
+  15: '#a8763e',
+  50: '#6f8f6a',
+  85: '#a8763e',
+  97: '#c9b8a3',
+};
+
+function setupGrowthTab() {
+  const citationEl = document.getElementById('growth-citation');
+  if (citationEl) citationEl.textContent = GROWTH_STANDARDS.citation;
+
+  document.getElementById('input-growth-date').value = todayStr();
+  document.getElementById('btn-add-growth').addEventListener('click', onAddGrowth);
+}
+
+async function onAddGrowth() {
+  const indicator = document.getElementById('input-growth-indicator').value;
+  const date = document.getElementById('input-growth-date').value || todayStr();
+  const valueInput = document.getElementById('input-growth-value');
+  const value = parseFloat(valueInput.value);
+  const recorder = document.getElementById('input-growth-recorder').value;
+  const resultEl = document.getElementById('growth-result');
+
+  if (!Number.isFinite(value) || value <= 0) {
+    showToast('請輸入有效的數值');
+    return;
+  }
+
+  await store.upsertGrowth({ indicator, value, date, recorder });
+  showToast('已記錄生長數據');
+
+  const months = ageInMonths(babyBirthDateCache, date);
+  const indMeta = GROWTH_STANDARDS.indicators[indicator];
+  const outOfRange = months < 0 || months > 24;
+  const percentile = percentileFor(value, months, indicator, babySexCache);
+  if (resultEl) {
+    resultEl.textContent = `${indMeta.name} ${value}${indMeta.unit}｜約第 ${percentile.toFixed(1)} 百分位（達成時 ${months} 個月大）${
+      outOfRange ? '｜超出 0-24 月標準範圍' : ''
+    }`;
+  }
+
+  valueInput.value = '';
+  await refreshAll();
+}
+
+function renderGrowthTab() {
+  renderGrowthList();
+  for (const indicator of GROWTH_INDICATOR_KEYS) {
+    renderGrowthChart(indicator);
+  }
+}
+
+function renderGrowthList() {
+  const listEl = document.getElementById('growth-list');
+  if (!listEl) return;
+  listEl.innerHTML = '';
+
+  const items = [...growthCache].sort((a, b) => (a.date < b.date ? 1 : -1));
+
+  if (items.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'empty-hint';
+    li.textContent = '尚無測量記錄';
+    listEl.appendChild(li);
+    return;
+  }
+
+  for (const g of items) {
+    const indMeta = GROWTH_STANDARDS.indicators[g.indicator];
+    if (!indMeta) continue;
+    const li = document.createElement('li');
+
+    const meta = document.createElement('div');
+    meta.className = 'word-meta';
+    const textDiv = document.createElement('div');
+    textDiv.className = 'word-text';
+    textDiv.textContent = `${indMeta.name} ${g.value}${indMeta.unit}`;
+    meta.appendChild(textDiv);
+
+    const subDiv = document.createElement('div');
+    subDiv.className = 'word-sub';
+    subDiv.textContent = `${g.date}${g.recorder ? '｜' + g.recorder : ''}`;
+    meta.appendChild(subDiv);
+    li.appendChild(meta);
+
+    const btnRow = document.createElement('div');
+    btnRow.className = 'btn-row';
+    const delBtn = document.createElement('button');
+    delBtn.className = 'danger';
+    delBtn.textContent = '刪除';
+    delBtn.addEventListener('click', async () => {
+      await store.deleteGrowth(g.id);
+      showToast('已刪除該筆記錄');
+      await refreshAll();
+    });
+    btnRow.appendChild(delBtn);
+    li.appendChild(btnRow);
+
+    listEl.appendChild(li);
+  }
+}
+
+function renderGrowthChart(indicator) {
+  const ctx = document.getElementById(`chart-growth-${indicator}`);
+  if (!ctx || typeof Chart === 'undefined') return;
+
+  const indMeta = GROWTH_STANDARDS.indicators[indicator];
+  const datasets = [];
+
+  for (const p of GROWTH_PERCENTILE_LINES) {
+    const curve = whoCurve(indicator, babySexCache, p);
+    datasets.push({
+      label: `第 ${p} 百分位`,
+      data: curve.map((pt) => ({ x: pt.m, y: pt.value })),
+      borderColor: GROWTH_PERCENTILE_COLORS[p],
+      borderWidth: p === 50 ? 2 : 1,
+      borderDash: p === 50 ? [] : [4, 3],
+      pointRadius: 0,
+      tension: 0.3,
+    });
+  }
+
+  const measurements = growthCache
+    .filter((g) => g.indicator === indicator)
+    .map((g) => ({ x: ageInMonths(babyBirthDateCache, g.date), y: g.value }))
+    .sort((a, b) => a.x - b.x);
+
+  datasets.push({
+    label: `孩子測量（${indMeta.unit}）`,
+    data: measurements,
+    borderColor: '#2b2620',
+    backgroundColor: '#2b2620',
+    pointRadius: 4,
+    showLine: true,
+    tension: 0,
+  });
+
+  if (indicator === 'weight' && chartGrowthWeight) chartGrowthWeight.destroy();
+  if (indicator === 'length' && chartGrowthLength) chartGrowthLength.destroy();
+  if (indicator === 'head' && chartGrowthHead) chartGrowthHead.destroy();
+
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { type: 'linear', title: { display: true, text: '月齡' }, min: 0, max: 24 },
+        y: { title: { display: true, text: indMeta.unit } },
+      },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 9 } } } },
+    },
+  });
+
+  if (indicator === 'weight') chartGrowthWeight = chart;
+  if (indicator === 'length') chartGrowthLength = chart;
+  if (indicator === 'head') chartGrowthHead = chart;
+}
+
+// ---------------------------------------------------------------------------
 // 設定頁
 // ---------------------------------------------------------------------------
 
@@ -810,10 +992,16 @@ async function onSaveBabyBirth() {
     showToast('請選擇出生日期');
     return;
   }
+  const sexInput = document.getElementById('input-baby-sex');
+  const sex = sexInput ? sexInput.value : DEFAULT_BABY_SEX;
+
   await store.setBabyBirthDate(dateStr);
+  await store.setBabySex(sex);
   babyBirthDateCache = dateStr;
-  showToast('已儲存寶寶出生日期');
+  babySexCache = sex;
+  showToast('已儲存寶寶基本資料');
   renderMilestoneTab();
+  renderGrowthTab();
 }
 
 // ---------------------------------------------------------------------------
@@ -931,14 +1119,18 @@ async function checkLocalHasData() {
       gestures: JSON.parse(localStorage.getItem('cdi_gestures') || '[]'),
       wordlist: JSON.parse(localStorage.getItem('cdi_wordlist') || '[]'),
       milestones: JSON.parse(localStorage.getItem('cdi_milestones') || '[]'),
+      growth: JSON.parse(localStorage.getItem('cdi_growth') || '[]'),
     };
     const babyBirth = localStorage.getItem('cdi_baby_birth');
+    const babySex = localStorage.getItem('cdi_baby_sex');
     return (
       raw.words.length > 0 ||
       raw.gestures.length > 0 ||
       raw.wordlist.length > 0 ||
       raw.milestones.length > 0 ||
-      !!babyBirth
+      raw.growth.length > 0 ||
+      !!babyBirth ||
+      !!babySex
     );
   } catch (e) {
     return false;
@@ -954,27 +1146,42 @@ async function migrateLocalDataToCloudIfEmpty() {
   const localGestures = JSON.parse(localStorage.getItem('cdi_gestures') || '[]');
   const localWordlist = JSON.parse(localStorage.getItem('cdi_wordlist') || '[]');
   const localMilestones = JSON.parse(localStorage.getItem('cdi_milestones') || '[]');
+  const localGrowth = JSON.parse(localStorage.getItem('cdi_growth') || '[]');
   const localBabyBirth = localStorage.getItem('cdi_baby_birth');
+  const localBabySex = localStorage.getItem('cdi_baby_sex');
 
   const cloudWords = await store.listWords();
   const cloudGestures = await store.listGestures();
   const cloudWordlist = await store.listWordlistEntries();
   const cloudMilestones = await store.listMilestones();
+  const cloudGrowth = await store.listGrowth();
   const cloudBabyBirth = await store.getBabyBirthDate();
+  const cloudBabySex = await store.getBabySex();
 
-  // 各集合獨立判斷該不該從本機灌上雲
+  // 各集合獨立判斷該不該從本機灌上雲（不用「雲端全空」當總開關）
   const wordsToMigrate = cloudWords.length === 0 ? localWords : [];
   const gesturesToMigrate = cloudGestures.length === 0 ? localGestures : [];
   const wordlistToMigrate = cloudWordlist.length === 0 ? localWordlist : [];
   const milestonesToMigrate = cloudMilestones.length === 0 ? localMilestones : [];
+  const growthToMigrate = cloudGrowth.length === 0 ? localGrowth : [];
   const babyBirthToMigrate = !cloudBabyBirth && localBabyBirth ? localBabyBirth : null;
+  const babySexToMigrate = (!cloudBabySex || cloudBabySex === DEFAULT_BABY_SEX) && localBabySex ? localBabySex : null;
 
-  if (wordsToMigrate.length > 0 || gesturesToMigrate.length > 0 || milestonesToMigrate.length > 0 || babyBirthToMigrate) {
+  if (
+    wordsToMigrate.length > 0 ||
+    gesturesToMigrate.length > 0 ||
+    milestonesToMigrate.length > 0 ||
+    growthToMigrate.length > 0 ||
+    babyBirthToMigrate ||
+    babySexToMigrate
+  ) {
     await store.importAll({
       words: wordsToMigrate,
       gestures: gesturesToMigrate,
       milestones: milestonesToMigrate,
+      growth: growthToMigrate,
       babyBirthDate: babyBirthToMigrate,
+      babySex: babySexToMigrate,
     });
   }
   if (wordlistToMigrate.length > 0) {
@@ -986,7 +1193,9 @@ async function migrateLocalDataToCloudIfEmpty() {
     gesturesToMigrate.length +
     wordlistToMigrate.length +
     milestonesToMigrate.length +
-    (babyBirthToMigrate ? 1 : 0);
+    growthToMigrate.length +
+    (babyBirthToMigrate ? 1 : 0) +
+    (babySexToMigrate ? 1 : 0);
   if (migratedCount > 0) {
     showToast(`已將本機 ${migratedCount} 筆記錄遷移至雲端`);
   }
