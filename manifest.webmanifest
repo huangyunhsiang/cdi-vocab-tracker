@@ -1,7 +1,7 @@
 {
-  "name": "寶寶詞彙追蹤 CDI Vocab Tracker",
-  "short_name": "詞彙追蹤",
-  "description": "嬰幼兒詞彙與手勢發展追蹤工具（CDI 公開類別架構）",
+  "name": "寶寶成長追蹤",
+  "short_name": "成長追蹤",
+  "description": "嬰幼兒詞彙、手勢與動作發展追蹤工具（CDI 公開類別架構＋WHO 動作里程碑）",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

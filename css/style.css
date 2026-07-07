@@ -352,3 +352,37 @@ nav.tab-bar button .tab-icon {
 .sync-denied-msg {
   color: var(--color-danger);
 }
+
+.milestone-range {
+  font-size: 0.85rem;
+  color: var(--color-ink-soft);
+  margin: 0 0 var(--space-2);
+}
+
+.milestone-note {
+  font-size: 0.78rem;
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  border-radius: 8px;
+  padding: var(--space-1) var(--space-2);
+  margin: 0 0 var(--space-2);
+}
+
+.milestone-result {
+  font-size: 0.88rem;
+  color: var(--color-ink-soft);
+  text-align: center;
+  margin-top: var(--space-2);
+}
+
+.milestone-result.attainment-early {
+  color: var(--color-understand);
+}
+
+.milestone-result.attainment-within {
+  color: var(--color-success);
+}
+
+.milestone-result.attainment-late {
+  color: var(--color-danger);
+}

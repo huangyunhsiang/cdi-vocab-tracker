@@ -9,12 +9,16 @@ import * as store from './store.js';
 import * as analytics from './analytics.js';
 import { CATEGORIES, GESTURE_TYPES, getCategoryById } from './categories.js';
 import { parseWordlist } from './wordlist-loader.js';
+import { MILESTONES, ageInMonths, classifyAttainment } from './milestones.js';
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
+const DEFAULT_BABY_BIRTH = '2025-07-21';
 
 let wordsCache = [];
 let gesturesCache = [];
 let wordlistCache = [];
+let milestonesCache = [];
+let babyBirthDateCache = DEFAULT_BABY_BIRTH;
 
 let chartCumulative = null;
 let chartWeekly = null;
@@ -36,6 +40,7 @@ async function main() {
   setupTabNav();
   setupRecordForm();
   setupWordlistTab();
+  setupMilestoneTab();
   setupSettingsTab();
   setupCloudSyncUI();
 
@@ -64,11 +69,17 @@ async function refreshAll() {
   wordsCache = await store.listWords();
   gesturesCache = await store.listGestures();
   wordlistCache = await store.listWordlistEntries();
+  milestonesCache = await store.listMilestones();
+  babyBirthDateCache = (await store.getBabyBirthDate()) || DEFAULT_BABY_BIRTH;
+
+  const babyBirthInput = document.getElementById('input-baby-birth');
+  if (babyBirthInput) babyBirthInput.value = babyBirthDateCache;
 
   renderWordList();
   renderCurveTab();
   renderAnalysisTab();
   renderWordlistPreview();
+  renderMilestoneTab();
 }
 
 // ---------------------------------------------------------------------------
@@ -86,6 +97,7 @@ function setupTabNav() {
 
       if (btn.dataset.tab === 'tab-curve') renderCurveTab();
       if (btn.dataset.tab === 'tab-analysis') renderAnalysisTab();
+      if (btn.dataset.tab === 'tab-milestone') renderMilestoneTab();
     });
   });
 }
@@ -444,6 +456,156 @@ function escapeHtml(str) {
 }
 
 // ---------------------------------------------------------------------------
+// 里程碑頁
+// ---------------------------------------------------------------------------
+
+const ATTAINMENT_LABEL = {
+  early: '比多數寶寶早達成',
+  within: '落在正常範圍內',
+  late: '超出正常窗口，建議諮詢專業',
+};
+
+function setupMilestoneTab() {
+  const wrap = document.getElementById('milestone-cards');
+  wrap.innerHTML = '';
+
+  for (const milestone of MILESTONES) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.milestoneKey = milestone.key;
+
+    const title = document.createElement('h2');
+    title.textContent = `${milestone.emoji} ${milestone.name}`;
+    card.appendChild(title);
+
+    const range = document.createElement('p');
+    range.className = 'milestone-range';
+    range.textContent = `多數寶寶 ${milestone.p1}~${milestone.p99} 個月達成，中位數約 ${milestone.median} 個月`;
+    card.appendChild(range);
+
+    if (milestone.note) {
+      const note = document.createElement('p');
+      note.className = 'milestone-note';
+      note.textContent = milestone.note;
+      card.appendChild(note);
+    }
+
+    const dateLabel = document.createElement('label');
+    dateLabel.textContent = '達成日期';
+    dateLabel.setAttribute('for', `milestone-date-${milestone.key}`);
+    card.appendChild(dateLabel);
+
+    const dateInput = document.createElement('input');
+    dateInput.type = 'date';
+    dateInput.id = `milestone-date-${milestone.key}`;
+    card.appendChild(dateInput);
+
+    const recorderLabel = document.createElement('label');
+    recorderLabel.textContent = '記錄者';
+    recorderLabel.setAttribute('for', `milestone-recorder-${milestone.key}`);
+    card.appendChild(recorderLabel);
+
+    const recorderSelect = document.createElement('select');
+    recorderSelect.id = `milestone-recorder-${milestone.key}`;
+    recorderSelect.innerHTML = '<option value="爸爸">爸爸</option><option value="媽媽">媽媽</option>';
+    card.appendChild(recorderSelect);
+
+    const noteLabel = document.createElement('label');
+    noteLabel.textContent = '備註（選填）';
+    noteLabel.setAttribute('for', `milestone-note-${milestone.key}`);
+    card.appendChild(noteLabel);
+
+    const noteInput = document.createElement('input');
+    noteInput.type = 'text';
+    noteInput.id = `milestone-note-${milestone.key}`;
+    noteInput.placeholder = '例如：扶著沙發站起來';
+    card.appendChild(noteInput);
+
+    const btnRow = document.createElement('div');
+    btnRow.className = 'btn-row';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'full-width';
+    saveBtn.textContent = '記錄達成';
+    saveBtn.addEventListener('click', () => onSaveMilestone(milestone.key));
+    btnRow.appendChild(saveBtn);
+    card.appendChild(btnRow);
+
+    const resultDiv = document.createElement('div');
+    resultDiv.className = 'milestone-result';
+    resultDiv.id = `milestone-result-${milestone.key}`;
+    card.appendChild(resultDiv);
+
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'full-width secondary';
+    clearBtn.textContent = '清除此項達成紀錄';
+    clearBtn.id = `milestone-clear-${milestone.key}`;
+    clearBtn.style.display = 'none';
+    clearBtn.addEventListener('click', () => onClearMilestone(milestone.key));
+    card.appendChild(clearBtn);
+
+    wrap.appendChild(card);
+  }
+}
+
+async function onSaveMilestone(key) {
+  const milestone = MILESTONES.find((m) => m.key === key);
+  const dateInput = document.getElementById(`milestone-date-${key}`);
+  const recorder = document.getElementById(`milestone-recorder-${key}`).value;
+  const note = document.getElementById(`milestone-note-${key}`).value.trim();
+
+  const achievedDate = dateInput.value;
+  if (!achievedDate) {
+    showToast('請選擇達成日期');
+    return;
+  }
+
+  await store.upsertMilestone({ key, achievedDate, recorder, note });
+  showToast(`已記錄「${milestone.name}」`);
+
+  milestonesCache = await store.listMilestones();
+  renderMilestoneTab();
+}
+
+async function onClearMilestone(key) {
+  await store.deleteMilestone(key);
+  showToast('已清除此項達成紀錄');
+  milestonesCache = await store.listMilestones();
+  renderMilestoneTab();
+}
+
+function renderMilestoneTab() {
+  const wrap = document.getElementById('milestone-cards');
+  if (!wrap) return;
+
+  for (const milestone of MILESTONES) {
+    const record = milestonesCache.find((m) => m.key === milestone.key);
+    const resultDiv = document.getElementById(`milestone-result-${milestone.key}`);
+    const clearBtn = document.getElementById(`milestone-clear-${milestone.key}`);
+    const dateInput = document.getElementById(`milestone-date-${milestone.key}`);
+    const recorderSelect = document.getElementById(`milestone-recorder-${milestone.key}`);
+    const noteInput = document.getElementById(`milestone-note-${milestone.key}`);
+    if (!resultDiv || !clearBtn || !dateInput) continue;
+
+    if (record && record.achievedDate) {
+      dateInput.value = record.achievedDate;
+      if (recorderSelect && record.recorder) recorderSelect.value = record.recorder;
+      if (noteInput) noteInput.value = record.note || '';
+
+      const months = ageInMonths(babyBirthDateCache, record.achievedDate);
+      const attainment = classifyAttainment(months, milestone);
+      resultDiv.textContent = `達成時 ${months} 個月大｜${ATTAINMENT_LABEL[attainment]}`;
+      resultDiv.className = 'milestone-result attainment-' + attainment;
+      clearBtn.style.display = '';
+    } else {
+      resultDiv.textContent = '尚未記錄';
+      resultDiv.className = 'milestone-result';
+      clearBtn.style.display = 'none';
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 設定頁
 // ---------------------------------------------------------------------------
 
@@ -452,6 +614,19 @@ function setupSettingsTab() {
   document.getElementById('btn-export-json').addEventListener('click', onExportJson);
   document.getElementById('input-import-json').addEventListener('change', onImportJson);
   document.getElementById('btn-clear-all').addEventListener('click', onClearAll);
+  document.getElementById('btn-save-baby-birth').addEventListener('click', onSaveBabyBirth);
+}
+
+async function onSaveBabyBirth() {
+  const dateStr = document.getElementById('input-baby-birth').value;
+  if (!dateStr) {
+    showToast('請選擇出生日期');
+    return;
+  }
+  await store.setBabyBirthDate(dateStr);
+  babyBirthDateCache = dateStr;
+  showToast('已儲存寶寶出生日期');
+  renderMilestoneTab();
 }
 
 // ---------------------------------------------------------------------------
@@ -568,8 +743,16 @@ async function checkLocalHasData() {
       words: JSON.parse(localStorage.getItem('cdi_words') || '[]'),
       gestures: JSON.parse(localStorage.getItem('cdi_gestures') || '[]'),
       wordlist: JSON.parse(localStorage.getItem('cdi_wordlist') || '[]'),
+      milestones: JSON.parse(localStorage.getItem('cdi_milestones') || '[]'),
     };
-    return raw.words.length > 0 || raw.gestures.length > 0 || raw.wordlist.length > 0;
+    const babyBirth = localStorage.getItem('cdi_baby_birth');
+    return (
+      raw.words.length > 0 ||
+      raw.gestures.length > 0 ||
+      raw.wordlist.length > 0 ||
+      raw.milestones.length > 0 ||
+      !!babyBirth
+    );
   } catch (e) {
     return false;
   }
@@ -578,29 +761,45 @@ async function checkLocalHasData() {
 // 首次登入資料遷移：逐一集合判斷「雲端該集合為空 且 本機該集合有資料」→ 把該集合灌上雲。
 // 各集合獨立，不用「雲端全空」當總開關——否則只要載過題本（雲端 wordlist 非空），
 // 詞彙／手勢就會被誤判為「雲端非空」而永遠遷不上去。雲端該集合已有資料則以雲端為準，
-// 本機保留不動、不合併、不覆蓋。
+// 本機保留不動、不合併、不覆蓋。milestones／babyBirth 比照 words 模式獨立判斷。
 async function migrateLocalDataToCloudIfEmpty() {
   const localWords = JSON.parse(localStorage.getItem('cdi_words') || '[]');
   const localGestures = JSON.parse(localStorage.getItem('cdi_gestures') || '[]');
   const localWordlist = JSON.parse(localStorage.getItem('cdi_wordlist') || '[]');
+  const localMilestones = JSON.parse(localStorage.getItem('cdi_milestones') || '[]');
+  const localBabyBirth = localStorage.getItem('cdi_baby_birth');
 
   const cloudWords = await store.listWords();
   const cloudGestures = await store.listGestures();
   const cloudWordlist = await store.listWordlistEntries();
+  const cloudMilestones = await store.listMilestones();
+  const cloudBabyBirth = await store.getBabyBirthDate();
 
   // 各集合獨立判斷該不該從本機灌上雲
   const wordsToMigrate = cloudWords.length === 0 ? localWords : [];
   const gesturesToMigrate = cloudGestures.length === 0 ? localGestures : [];
   const wordlistToMigrate = cloudWordlist.length === 0 ? localWordlist : [];
+  const milestonesToMigrate = cloudMilestones.length === 0 ? localMilestones : [];
+  const babyBirthToMigrate = !cloudBabyBirth && localBabyBirth ? localBabyBirth : null;
 
-  if (wordsToMigrate.length > 0 || gesturesToMigrate.length > 0) {
-    await store.importAll({ words: wordsToMigrate, gestures: gesturesToMigrate });
+  if (wordsToMigrate.length > 0 || gesturesToMigrate.length > 0 || milestonesToMigrate.length > 0 || babyBirthToMigrate) {
+    await store.importAll({
+      words: wordsToMigrate,
+      gestures: gesturesToMigrate,
+      milestones: milestonesToMigrate,
+      babyBirthDate: babyBirthToMigrate,
+    });
   }
   if (wordlistToMigrate.length > 0) {
     await store.saveWordlistEntries(wordlistToMigrate);
   }
 
-  const migratedCount = wordsToMigrate.length + gesturesToMigrate.length + wordlistToMigrate.length;
+  const migratedCount =
+    wordsToMigrate.length +
+    gesturesToMigrate.length +
+    wordlistToMigrate.length +
+    milestonesToMigrate.length +
+    (babyBirthToMigrate ? 1 : 0);
   if (migratedCount > 0) {
     showToast(`已將本機 ${migratedCount} 筆記錄遷移至雲端`);
   }

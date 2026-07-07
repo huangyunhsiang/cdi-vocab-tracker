@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>寶寶詞彙追蹤 CDI Vocab Tracker</title>
-<meta name="description" content="嬰幼兒詞彙與手勢發展追蹤工具（CDI 公開類別架構）">
+<title>寶寶成長追蹤</title>
+<meta name="description" content="嬰幼兒詞彙、手勢與動作發展追蹤工具（CDI 公開類別架構＋WHO 動作里程碑）">
 <meta name="theme-color" content="#faf7f2">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
@@ -14,8 +14,8 @@
 <body>
 
 <header class="app-header">
-  <h1>寶寶詞彙追蹤</h1>
-  <div class="subtitle">CDI Vocab Tracker　<span id="sync-status">本機儲存</span></div>
+  <h1>寶寶成長追蹤</h1>
+  <div class="subtitle">Baby Growth Tracker　<span id="sync-status">本機儲存</span></div>
 </header>
 
 <main>
@@ -107,6 +107,14 @@
     </div>
   </section>
 
+  <!-- 里程碑頁 -->
+  <section id="tab-milestone" class="tab-panel" aria-labelledby="nav-milestone">
+    <div class="copyright-note">
+      發展篩檢參考，非診斷工具。9 個月前不宜判斷「慢」（六項里程碑中最早關閉的窗口是獨坐，p99=9.2 個月）；早產寶寶請以矯正年齡計算。若對發展有疑慮，請諮詢兒科醫師或兒童發展聯合評估中心。
+    </div>
+    <div id="milestone-cards"></div>
+  </section>
+
   <!-- 題本頁 -->
   <section id="tab-wordlist" class="tab-panel" aria-labelledby="nav-wordlist">
     <div class="copyright-note">
@@ -129,6 +137,13 @@
 
   <!-- 設定頁 -->
   <section id="tab-settings" class="tab-panel" aria-labelledby="nav-settings">
+    <div class="card">
+      <h2>寶寶基本資料</h2>
+      <label for="input-baby-birth">寶寶出生日期</label>
+      <input type="date" id="input-baby-birth" value="2025-07-21">
+      <button class="full-width secondary" id="btn-save-baby-birth">儲存出生日期</button>
+    </div>
+
     <div class="card">
       <h2>資料匯出</h2>
       <button class="full-width secondary" id="btn-export-csv">匯出研究級 CSV</button>
@@ -176,6 +191,7 @@
   <button id="nav-record" class="active" data-tab="tab-record"><span class="tab-icon">📝</span>記錄</button>
   <button id="nav-curve" data-tab="tab-curve"><span class="tab-icon">📈</span>曲線</button>
   <button id="nav-analysis" data-tab="tab-analysis"><span class="tab-icon">📊</span>分析</button>
+  <button id="nav-milestone" data-tab="tab-milestone"><span class="tab-icon">🚼</span>里程碑</button>
   <button id="nav-wordlist" data-tab="tab-wordlist"><span class="tab-icon">📖</span>題本</button>
   <button id="nav-settings" data-tab="tab-settings"><span class="tab-icon">⚙️</span>設定</button>
 </nav>

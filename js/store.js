@@ -10,6 +10,9 @@
  * 集合結構（Firestore）：
  *   families/{familyId}/words/{wordId}
  *   families/{familyId}/gestures/{gestureId}
+ *   families/{familyId}/milestones/{milestoneKey}
+ *   families/{familyId}/meta/wordlist　（{ entries: [...] }）
+ *   families/{familyId}/meta/profile　（{ babyBirthDate: 'YYYY-MM-DD' }）
  *
  * 對外 API：
  *   init(): Promise<void>
@@ -20,7 +23,12 @@
  *   listGestures(): Promise<GestureRecord[]>
  *   upsertGesture(gesture): Promise<GestureRecord>
  *   deleteGesture(id): Promise<void>
- *   exportAll(): Promise<{words, gestures}>
+ *   listMilestones(): Promise<MilestoneRecord[]>
+ *   upsertMilestone(record): Promise<MilestoneRecord>
+ *   deleteMilestone(key): Promise<void>
+ *   getBabyBirthDate(): Promise<string|null>
+ *   setBabyBirthDate(dateStr): Promise<void>
+ *   exportAll(): Promise<{words, gestures, milestones, babyBirthDate}>
  *   importAll(data): Promise<void>
  *   clearAll(): Promise<void>
  *   listWordlistEntries(): Promise<WordlistEntry[]>
@@ -40,6 +48,8 @@ const LS_PREFIX = 'cdi_';
 const LS_WORDS_KEY = LS_PREFIX + 'words';
 const LS_GESTURES_KEY = LS_PREFIX + 'gestures';
 const LS_WORDLIST_KEY = LS_PREFIX + 'wordlist';
+const LS_MILESTONES_KEY = LS_PREFIX + 'milestones';
+const LS_BABY_BIRTH_KEY = LS_PREFIX + 'baby_birth';
 const FAMILY_ID = 'default';
 
 function genId() {
@@ -115,22 +125,60 @@ const localBackend = {
     this._write(LS_GESTURES_KEY, gestures);
   },
 
+  async listMilestones() {
+    return this._read(LS_MILESTONES_KEY);
+  },
+
+  async upsertMilestone(record) {
+    const milestones = this._read(LS_MILESTONES_KEY);
+    const idx = milestones.findIndex((m) => m.key === record.key);
+    const saved = { ...record };
+    if (idx >= 0) {
+      milestones[idx] = saved;
+    } else {
+      milestones.push(saved);
+    }
+    this._write(LS_MILESTONES_KEY, milestones);
+    return saved;
+  },
+
+  async deleteMilestone(key) {
+    const milestones = this._read(LS_MILESTONES_KEY).filter((m) => m.key !== key);
+    this._write(LS_MILESTONES_KEY, milestones);
+  },
+
+  async getBabyBirthDate() {
+    return localStorage.getItem(LS_BABY_BIRTH_KEY) || null;
+  },
+
+  async setBabyBirthDate(dateStr) {
+    localStorage.setItem(LS_BABY_BIRTH_KEY, dateStr);
+  },
+
   async exportAll() {
     return {
       words: this._read(LS_WORDS_KEY),
       gestures: this._read(LS_GESTURES_KEY),
+      milestones: this._read(LS_MILESTONES_KEY),
+      babyBirthDate: localStorage.getItem(LS_BABY_BIRTH_KEY) || null,
     };
   },
 
   async importAll(data) {
     if (Array.isArray(data.words)) this._write(LS_WORDS_KEY, data.words);
     if (Array.isArray(data.gestures)) this._write(LS_GESTURES_KEY, data.gestures);
+    if (Array.isArray(data.milestones)) this._write(LS_MILESTONES_KEY, data.milestones);
+    if (typeof data.babyBirthDate === 'string' && data.babyBirthDate) {
+      localStorage.setItem(LS_BABY_BIRTH_KEY, data.babyBirthDate);
+    }
   },
 
   async clearAll() {
     localStorage.removeItem(LS_WORDS_KEY);
     localStorage.removeItem(LS_GESTURES_KEY);
     localStorage.removeItem(LS_WORDLIST_KEY);
+    localStorage.removeItem(LS_MILESTONES_KEY);
+    localStorage.removeItem(LS_BABY_BIRTH_KEY);
   },
 
   async listWordlistEntries() {
@@ -206,9 +254,43 @@ function createFirestoreBackend(firebaseConfig) {
       await familyDoc('gestures').doc(id).delete();
     },
 
+    async listMilestones() {
+      const snap = await familyDoc('milestones').get();
+      return snap.docs.map((d) => d.data());
+    },
+
+    async upsertMilestone(record) {
+      const saved = { ...record };
+      await familyDoc('milestones').doc(record.key).set(saved);
+      return saved;
+    },
+
+    async deleteMilestone(key) {
+      await familyDoc('milestones').doc(key).delete();
+    },
+
+    async getBabyBirthDate() {
+      const doc = await db.collection('families').doc(FAMILY_ID).collection('meta').doc('profile').get();
+      return doc.exists ? doc.data().babyBirthDate || null : null;
+    },
+
+    async setBabyBirthDate(dateStr) {
+      await db
+        .collection('families')
+        .doc(FAMILY_ID)
+        .collection('meta')
+        .doc('profile')
+        .set({ babyBirthDate: dateStr }, { merge: true });
+    },
+
     async exportAll() {
-      const [words, gestures] = await Promise.all([this.listWords(), this.listGestures()]);
-      return { words, gestures };
+      const [words, gestures, milestones, babyBirthDate] = await Promise.all([
+        this.listWords(),
+        this.listGestures(),
+        this.listMilestones(),
+        this.getBabyBirthDate(),
+      ]);
+      return { words, gestures, milestones, babyBirthDate };
     },
 
     async importAll(data) {
@@ -221,14 +303,30 @@ function createFirestoreBackend(firebaseConfig) {
         const id = g.id || genId();
         batch.set(familyDoc('gestures').doc(id), { ...g, id });
       }
+      for (const m of data.milestones || []) {
+        batch.set(familyDoc('milestones').doc(m.key), { ...m });
+      }
+      if (typeof data.babyBirthDate === 'string' && data.babyBirthDate) {
+        batch.set(
+          db.collection('families').doc(FAMILY_ID).collection('meta').doc('profile'),
+          { babyBirthDate: data.babyBirthDate },
+          { merge: true }
+        );
+      }
       await batch.commit();
     },
 
     async clearAll() {
-      const [words, gestures] = await Promise.all([this.listWords(), this.listGestures()]);
+      const [words, gestures, milestones] = await Promise.all([
+        this.listWords(),
+        this.listGestures(),
+        this.listMilestones(),
+      ]);
       const batch = db.batch();
       for (const w of words) batch.delete(familyDoc('words').doc(w.id));
       for (const g of gestures) batch.delete(familyDoc('gestures').doc(g.id));
+      for (const m of milestones) batch.delete(familyDoc('milestones').doc(m.key));
+      batch.delete(db.collection('families').doc(FAMILY_ID).collection('meta').doc('profile'));
       await batch.commit();
     },
 
@@ -427,4 +525,29 @@ export async function listWordlistEntries() {
 export async function saveWordlistEntries(entries) {
   ensureInit();
   return backend.saveWordlistEntries(entries);
+}
+
+export async function listMilestones() {
+  ensureInit();
+  return backend.listMilestones();
+}
+
+export async function upsertMilestone(record) {
+  ensureInit();
+  return backend.upsertMilestone(record);
+}
+
+export async function deleteMilestone(key) {
+  ensureInit();
+  return backend.deleteMilestone(key);
+}
+
+export async function getBabyBirthDate() {
+  ensureInit();
+  return backend.getBabyBirthDate();
+}
+
+export async function setBabyBirthDate(dateStr) {
+  ensureInit();
+  return backend.setBabyBirthDate(dateStr);
 }
