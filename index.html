@@ -23,6 +23,28 @@
   <!-- 記錄頁 -->
   <section id="tab-record" class="tab-panel active" aria-labelledby="nav-record">
     <div class="card">
+      <h2>手勢記錄</h2>
+      <label for="input-gesture">手勢類型</label>
+      <select id="input-gesture"></select>
+
+      <label for="input-gesture-date">日期</label>
+      <input type="date" id="input-gesture-date">
+
+      <label for="input-gesture-recorder">記錄者</label>
+      <select id="input-gesture-recorder">
+        <option value="爸爸">爸爸</option>
+        <option value="媽媽">媽媽</option>
+      </select>
+
+      <button class="full-width" id="btn-add-gesture">新增手勢記錄</button>
+    </div>
+
+    <div class="card">
+      <h2>手勢記錄清單</h2>
+      <ul class="word-list" id="gesture-list"></ul>
+    </div>
+
+    <div class="card">
       <h2>快速新增詞彙</h2>
       <label for="input-word">詞彙</label>
       <input type="text" id="input-word" placeholder="例如：媽媽">
@@ -52,23 +74,6 @@
       <input type="text" id="input-note" placeholder="例如：看到狗狗時說的">
 
       <button class="full-width" id="btn-add-word">新增詞彙</button>
-    </div>
-
-    <div class="card">
-      <h2>手勢記錄</h2>
-      <label for="input-gesture">手勢類型</label>
-      <select id="input-gesture"></select>
-
-      <label for="input-gesture-date">日期</label>
-      <input type="date" id="input-gesture-date">
-
-      <label for="input-gesture-recorder">記錄者</label>
-      <select id="input-gesture-recorder">
-        <option value="爸爸">爸爸</option>
-        <option value="媽媽">媽媽</option>
-      </select>
-
-      <button class="full-width" id="btn-add-gesture">新增手勢記錄</button>
     </div>
 
     <div class="card">

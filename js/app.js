@@ -95,6 +95,7 @@ async function refreshAll() {
   if (babySexInput) babySexInput.value = babySexCache;
 
   renderWordList();
+  renderGestureList();
   renderCurveTab();
   renderAnalysisTab();
   renderWordlistPreview();
@@ -268,6 +269,59 @@ function renderWordList() {
     delBtn.addEventListener('click', async () => {
       await store.deleteWord(w.id);
       showToast(`已刪除「${w.word}」`);
+      await refreshAll();
+    });
+    btnRow.appendChild(delBtn);
+
+    li.appendChild(btnRow);
+    listEl.appendChild(li);
+  }
+}
+
+function renderGestureList() {
+  const listEl = document.getElementById('gesture-list');
+  if (!listEl) return;
+
+  const items = [...gesturesCache].sort((a, b) => ((a.date || '') < (b.date || '') ? 1 : -1));
+
+  listEl.innerHTML = '';
+
+  if (items.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'empty-hint';
+    li.textContent = '尚無手勢記錄，開始新增第一筆吧！';
+    listEl.appendChild(li);
+    return;
+  }
+
+  for (const g of items) {
+    const gestureType = GESTURE_TYPES.find((t) => t.id === g.gesture) || GESTURE_TYPES[GESTURE_TYPES.length - 1];
+    const li = document.createElement('li');
+
+    const meta = document.createElement('div');
+    meta.className = 'word-meta';
+
+    const textDiv = document.createElement('div');
+    textDiv.className = 'word-text';
+    textDiv.textContent = `${gestureType.emoji} ${gestureType.name}`;
+    meta.appendChild(textDiv);
+
+    const subDiv = document.createElement('div');
+    subDiv.className = 'word-sub';
+    subDiv.textContent = `${g.date || ''}${g.recorder ? '｜' + g.recorder : ''}`;
+    meta.appendChild(subDiv);
+
+    li.appendChild(meta);
+
+    const btnRow = document.createElement('div');
+    btnRow.className = 'btn-row';
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'danger';
+    delBtn.textContent = '刪除';
+    delBtn.addEventListener('click', async () => {
+      await store.deleteGesture(g.id);
+      showToast('已刪除該筆手勢記錄');
       await refreshAll();
     });
     btnRow.appendChild(delBtn);
