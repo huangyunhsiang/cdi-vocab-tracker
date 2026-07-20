@@ -9,7 +9,7 @@
  * 注意：改變快取策略或核心資產時，bump CACHE_NAME 版本號以清掉舊快取。
  */
 
-const CACHE_NAME = 'cdi-vocab-tracker-v7';
+const CACHE_NAME = 'cdi-vocab-tracker-v8';
 
 const CORE_ASSETS = [
   './',

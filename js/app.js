@@ -29,6 +29,11 @@ let devCheckSelectedMonths = null;
 let babyBirthDateCache = DEFAULT_BABY_BIRTH;
 let babySexCache = DEFAULT_BABY_SEX;
 
+// 記錄清單「就地編輯」狀態：同一時間每種清單最多一筆進入編輯模式
+let editingWordId = null;
+let editingGestureId = null;
+let editingGrowthId = null;
+
 let chartCumulative = null;
 let chartWeekly = null;
 let chartCategory = null;
@@ -227,6 +232,11 @@ function renderWordList() {
   }
 
   for (const w of items) {
+    if (editingWordId === w.id) {
+      listEl.appendChild(buildWordEditRow(w));
+      continue;
+    }
+
     const cat = getCategoryById(w.category);
     const li = document.createElement('li');
 
@@ -263,6 +273,15 @@ function renderWordList() {
       btnRow.appendChild(upgradeBtn);
     }
 
+    const editBtn = document.createElement('button');
+    editBtn.className = 'secondary';
+    editBtn.textContent = '編輯';
+    editBtn.addEventListener('click', () => {
+      editingWordId = w.id;
+      renderWordList();
+    });
+    btnRow.appendChild(editBtn);
+
     const delBtn = document.createElement('button');
     delBtn.className = 'danger';
     delBtn.textContent = '刪除';
@@ -276,6 +295,127 @@ function renderWordList() {
     li.appendChild(btnRow);
     listEl.appendChild(li);
   }
+}
+
+/** 詞彙清單「就地編輯」表單：可改詞彙文字、類別、理解／表達日期、記錄者、備註。 */
+function buildWordEditRow(w) {
+  const li = document.createElement('li');
+  li.className = 'edit-row';
+
+  const wordLabel = document.createElement('label');
+  wordLabel.textContent = '詞彙';
+  li.appendChild(wordLabel);
+  const wordInput = document.createElement('input');
+  wordInput.type = 'text';
+  wordInput.value = w.word;
+  li.appendChild(wordInput);
+
+  const catLabel = document.createElement('label');
+  catLabel.textContent = '類別';
+  li.appendChild(catLabel);
+  const catSelect = document.createElement('select');
+  populateSelect(catSelect, CATEGORIES, (c) => `${c.emoji} ${c.name}`, (c) => c.id);
+  catSelect.value = w.category;
+  li.appendChild(catSelect);
+
+  const understandsRow = document.createElement('div');
+  understandsRow.className = 'checkbox-row';
+  const understandsCheck = document.createElement('input');
+  understandsCheck.type = 'checkbox';
+  understandsCheck.checked = !!w.understandsDate;
+  const understandsLabel = document.createElement('label');
+  understandsLabel.textContent = '聽得懂';
+  const understandsDateInput = document.createElement('input');
+  understandsDateInput.type = 'date';
+  understandsDateInput.value = w.understandsDate || '';
+  understandsDateInput.disabled = !understandsCheck.checked;
+  understandsCheck.addEventListener('change', () => {
+    understandsDateInput.disabled = !understandsCheck.checked;
+    if (understandsCheck.checked && !understandsDateInput.value) understandsDateInput.value = todayStr();
+  });
+  understandsRow.appendChild(understandsCheck);
+  understandsRow.appendChild(understandsLabel);
+  understandsRow.appendChild(understandsDateInput);
+  li.appendChild(understandsRow);
+
+  const saysRow = document.createElement('div');
+  saysRow.className = 'checkbox-row';
+  const saysCheck = document.createElement('input');
+  saysCheck.type = 'checkbox';
+  saysCheck.checked = !!w.saysDate;
+  const saysLabel = document.createElement('label');
+  saysLabel.textContent = '會說';
+  const saysDateInput = document.createElement('input');
+  saysDateInput.type = 'date';
+  saysDateInput.value = w.saysDate || '';
+  saysDateInput.disabled = !saysCheck.checked;
+  saysCheck.addEventListener('change', () => {
+    saysDateInput.disabled = !saysCheck.checked;
+    if (saysCheck.checked && !saysDateInput.value) saysDateInput.value = todayStr();
+  });
+  saysRow.appendChild(saysCheck);
+  saysRow.appendChild(saysLabel);
+  saysRow.appendChild(saysDateInput);
+  li.appendChild(saysRow);
+
+  const recorderLabel = document.createElement('label');
+  recorderLabel.textContent = '記錄者';
+  li.appendChild(recorderLabel);
+  const recorderSelect = document.createElement('select');
+  recorderSelect.innerHTML = '<option value="爸爸">爸爸</option><option value="媽媽">媽媽</option>';
+  recorderSelect.value = w.recorder || '爸爸';
+  li.appendChild(recorderSelect);
+
+  const noteLabel = document.createElement('label');
+  noteLabel.textContent = '情境備註（選填）';
+  li.appendChild(noteLabel);
+  const noteInput = document.createElement('input');
+  noteInput.type = 'text';
+  noteInput.value = w.note || '';
+  li.appendChild(noteInput);
+
+  const btnRow = document.createElement('div');
+  btnRow.className = 'btn-row';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.textContent = '儲存';
+  saveBtn.addEventListener('click', async () => {
+    const newWord = wordInput.value.trim();
+    if (!newWord) {
+      showToast('請輸入詞彙');
+      return;
+    }
+    if (!understandsCheck.checked && !saysCheck.checked) {
+      showToast('請至少勾選「聽得懂」或「會說」其中一項');
+      return;
+    }
+    const updated = {
+      ...w,
+      word: newWord,
+      category: catSelect.value,
+      understandsDate: understandsCheck.checked ? understandsDateInput.value || todayStr() : null,
+      saysDate: saysCheck.checked ? saysDateInput.value || todayStr() : null,
+      recorder: recorderSelect.value,
+      note: noteInput.value.trim(),
+    };
+    await store.upsertWord(updated);
+    editingWordId = null;
+    showToast(`已更新「${updated.word}」`);
+    await refreshAll();
+  });
+  btnRow.appendChild(saveBtn);
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'secondary';
+  cancelBtn.textContent = '取消';
+  cancelBtn.addEventListener('click', () => {
+    editingWordId = null;
+    renderWordList();
+  });
+  btnRow.appendChild(cancelBtn);
+
+  li.appendChild(btnRow);
+  return li;
 }
 
 function renderGestureList() {
@@ -295,6 +435,11 @@ function renderGestureList() {
   }
 
   for (const g of items) {
+    if (editingGestureId === g.id) {
+      listEl.appendChild(buildGestureEditRow(g));
+      continue;
+    }
+
     const gestureType = GESTURE_TYPES.find((t) => t.id === g.gesture) || GESTURE_TYPES[GESTURE_TYPES.length - 1];
     const li = document.createElement('li');
 
@@ -316,6 +461,15 @@ function renderGestureList() {
     const btnRow = document.createElement('div');
     btnRow.className = 'btn-row';
 
+    const editBtn = document.createElement('button');
+    editBtn.className = 'secondary';
+    editBtn.textContent = '編輯';
+    editBtn.addEventListener('click', () => {
+      editingGestureId = g.id;
+      renderGestureList();
+    });
+    btnRow.appendChild(editBtn);
+
     const delBtn = document.createElement('button');
     delBtn.className = 'danger';
     delBtn.textContent = '刪除';
@@ -329,6 +483,67 @@ function renderGestureList() {
     li.appendChild(btnRow);
     listEl.appendChild(li);
   }
+}
+
+/** 手勢記錄「就地編輯」表單：可改手勢類型、日期、記錄者。 */
+function buildGestureEditRow(g) {
+  const li = document.createElement('li');
+  li.className = 'edit-row';
+
+  const gestureLabel = document.createElement('label');
+  gestureLabel.textContent = '手勢類型';
+  li.appendChild(gestureLabel);
+  const gestureSelect = document.createElement('select');
+  populateSelect(gestureSelect, GESTURE_TYPES, (t) => `${t.emoji} ${t.name}`, (t) => t.id);
+  gestureSelect.value = g.gesture;
+  li.appendChild(gestureSelect);
+
+  const dateLabel = document.createElement('label');
+  dateLabel.textContent = '日期';
+  li.appendChild(dateLabel);
+  const dateInput = document.createElement('input');
+  dateInput.type = 'date';
+  dateInput.value = g.date || '';
+  li.appendChild(dateInput);
+
+  const recorderLabel = document.createElement('label');
+  recorderLabel.textContent = '記錄者';
+  li.appendChild(recorderLabel);
+  const recorderSelect = document.createElement('select');
+  recorderSelect.innerHTML = '<option value="爸爸">爸爸</option><option value="媽媽">媽媽</option>';
+  recorderSelect.value = g.recorder || '爸爸';
+  li.appendChild(recorderSelect);
+
+  const btnRow = document.createElement('div');
+  btnRow.className = 'btn-row';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.textContent = '儲存';
+  saveBtn.addEventListener('click', async () => {
+    const updated = {
+      ...g,
+      gesture: gestureSelect.value,
+      date: dateInput.value || todayStr(),
+      recorder: recorderSelect.value,
+    };
+    await store.upsertGesture(updated);
+    editingGestureId = null;
+    showToast('已更新手勢記錄');
+    await refreshAll();
+  });
+  btnRow.appendChild(saveBtn);
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'secondary';
+  cancelBtn.textContent = '取消';
+  cancelBtn.addEventListener('click', () => {
+    editingGestureId = null;
+    renderGestureList();
+  });
+  btnRow.appendChild(cancelBtn);
+
+  li.appendChild(btnRow);
+  return li;
 }
 
 // ---------------------------------------------------------------------------
@@ -944,6 +1159,11 @@ function renderGrowthList() {
   }
 
   for (const g of items) {
+    if (editingGrowthId === g.id) {
+      listEl.appendChild(buildGrowthEditRow(g));
+      continue;
+    }
+
     const indMeta = GROWTH_STANDARDS.indicators[g.indicator];
     if (!indMeta) continue;
     const li = document.createElement('li');
@@ -963,6 +1183,15 @@ function renderGrowthList() {
 
     const btnRow = document.createElement('div');
     btnRow.className = 'btn-row';
+    const editBtn = document.createElement('button');
+    editBtn.className = 'secondary';
+    editBtn.textContent = '編輯';
+    editBtn.addEventListener('click', () => {
+      editingGrowthId = g.id;
+      renderGrowthList();
+    });
+    btnRow.appendChild(editBtn);
+
     const delBtn = document.createElement('button');
     delBtn.className = 'danger';
     delBtn.textContent = '刪除';
@@ -976,6 +1205,87 @@ function renderGrowthList() {
 
     listEl.appendChild(li);
   }
+}
+
+/** 生長記錄「就地編輯」表單：可改指標、數值、日期、記錄者。 */
+function buildGrowthEditRow(g) {
+  const li = document.createElement('li');
+  li.className = 'edit-row';
+
+  const indLabel = document.createElement('label');
+  indLabel.textContent = '指標';
+  li.appendChild(indLabel);
+  const indSelect = document.createElement('select');
+  populateSelect(
+    indSelect,
+    GROWTH_INDICATOR_KEYS,
+    (key) => `${GROWTH_STANDARDS.indicators[key].name}（${GROWTH_STANDARDS.indicators[key].unit}）`,
+    (key) => key
+  );
+  indSelect.value = g.indicator;
+  li.appendChild(indSelect);
+
+  const dateLabel = document.createElement('label');
+  dateLabel.textContent = '日期';
+  li.appendChild(dateLabel);
+  const dateInput = document.createElement('input');
+  dateInput.type = 'date';
+  dateInput.value = g.date || '';
+  li.appendChild(dateInput);
+
+  const valueLabel = document.createElement('label');
+  valueLabel.textContent = '數值';
+  li.appendChild(valueLabel);
+  const valueInput = document.createElement('input');
+  valueInput.type = 'number';
+  valueInput.step = '0.01';
+  valueInput.value = g.value;
+  li.appendChild(valueInput);
+
+  const recorderLabel = document.createElement('label');
+  recorderLabel.textContent = '記錄者';
+  li.appendChild(recorderLabel);
+  const recorderSelect = document.createElement('select');
+  recorderSelect.innerHTML = '<option value="爸爸">爸爸</option><option value="媽媽">媽媽</option>';
+  recorderSelect.value = g.recorder || '爸爸';
+  li.appendChild(recorderSelect);
+
+  const btnRow = document.createElement('div');
+  btnRow.className = 'btn-row';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.textContent = '儲存';
+  saveBtn.addEventListener('click', async () => {
+    const value = parseFloat(valueInput.value);
+    if (!Number.isFinite(value) || value <= 0) {
+      showToast('請輸入有效的數值');
+      return;
+    }
+    const updated = {
+      ...g,
+      indicator: indSelect.value,
+      value,
+      date: dateInput.value || todayStr(),
+      recorder: recorderSelect.value,
+    };
+    await store.upsertGrowth(updated);
+    editingGrowthId = null;
+    showToast('已更新生長記錄');
+    await refreshAll();
+  });
+  btnRow.appendChild(saveBtn);
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'secondary';
+  cancelBtn.textContent = '取消';
+  cancelBtn.addEventListener('click', () => {
+    editingGrowthId = null;
+    renderGrowthList();
+  });
+  btnRow.appendChild(cancelBtn);
+
+  li.appendChild(btnRow);
+  return li;
 }
 
 function renderGrowthChart(indicator) {
